@@ -6,6 +6,7 @@ export { Navigation, Breadcrumb } from './Navigation';
 export { Table } from './Table';
 export { Sidebar } from './Sidebar';
 export { Slider, ModernDateRangeSlider, CompactRangeSlider } from './Slider';
+export { DarkModeToggle } from './DarkModeToggle';
 export { 
   ChartContainer, 
   ModernAreaChart, 

@@ -28,13 +28,13 @@ export const Card: React.FC<CardProps> = ({
   const getVariantStyles = () => {
     switch (variant) {
       case 'elevated':
-        return 'bg-white dark:bg-slate-800 shadow-lg border-0';
+        return 'bg-white dark:bg-[#111113] shadow-lg border-0 transition-colors duration-300';
       case 'outlined':
-        return 'bg-white dark:bg-slate-800 border-2 border-gray-200 dark:border-slate-600 shadow-sm';
+        return 'bg-white dark:bg-[#111113] border-2 border-gray-200 dark:border-white/10 shadow-sm transition-colors duration-300';
       case 'glass':
-        return 'bg-white/80 dark:bg-slate-800/80 backdrop-blur-md border border-white/20 dark:border-slate-700/50';
+        return 'bg-white/80 dark:bg-[#111113]/80 backdrop-blur-md border border-white/20 dark:border-white/10 transition-colors duration-300';
       default:
-        return 'bg-white dark:bg-slate-800 shadow-md border border-gray-200/80 dark:border-slate-700';
+        return 'bg-white dark:bg-[#111113] shadow-md border border-gray-200/80 dark:border-white/10 transition-colors duration-300';
     }
   };
 
@@ -61,9 +61,9 @@ export const Card: React.FC<CardProps> = ({
     <div className={`${baseStyles} ${getVariantStyles()} ${getPaddingStyles()} ${className}`}>
       {loading ? (
         <div className="space-y-4">
-          <div className="h-4 bg-gray-200 dark:bg-slate-600 rounded animate-pulse"></div>
-          <div className="h-4 bg-gray-200 dark:bg-slate-600 rounded animate-pulse w-3/4"></div>
-          <div className="h-8 bg-gray-200 dark:bg-slate-600 rounded animate-pulse"></div>
+          <div className="h-4 bg-gray-200 dark:bg-[#242428] rounded animate-pulse"></div>
+          <div className="h-4 bg-gray-200 dark:bg-[#242428] rounded animate-pulse w-3/4"></div>
+          <div className="h-8 bg-gray-200 dark:bg-[#242428] rounded animate-pulse"></div>
         </div>
       ) : (
         children

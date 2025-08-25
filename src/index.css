@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import './styles/dark-mode.css';
 
 @tailwind base;
 @tailwind components;
@@ -13,10 +14,21 @@
   body {
     @apply bg-gray-50 text-gray-900 font-sans antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
   
   .dark body {
-    @apply bg-slate-900 text-slate-100;
+    background-color: #0a0a0b;
+    color: #ffffff;
+  }
+  
+  /* Prevent flash of unstyled content */
+  html {
+    background-color: #ffffff;
+  }
+  
+  html.dark {
+    background-color: #0a0a0b;
   }
 }
 

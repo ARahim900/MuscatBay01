@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Droplets, 
   Zap, 
@@ -17,6 +17,8 @@ import { Sidebar, Button } from './ui';
 import { ModernWaterModule } from './ModernWaterModule';
 import { EnhancedSTPModule } from './EnhancedSTPModule';
 import { theme } from '../lib/theme';
+import { DarkModeProvider } from '../contexts/DarkModeContext';
+import { DarkModeToggle } from './ui/DarkModeToggle';
 
 // Import other modules (you'll need to create modern versions of these)
 // import { ModernElectricityModule } from './ModernElectricityModule';
@@ -25,25 +27,18 @@ import { theme } from '../lib/theme';
 interface AppState {
   activeModule: string;
   isSidebarOpen: boolean;
-  isDarkMode: boolean;
 }
 
-export const ModernApp: React.FC = () => {
+const ModernAppContent: React.FC = () => {
   const [state, setState] = useState<AppState>({
     activeModule: 'water',
-    isSidebarOpen: false,
-    isDarkMode: false
+    isSidebarOpen: false
   });
 
   const toggleSidebar = () => {
     setState(prev => ({ ...prev, isSidebarOpen: !prev.isSidebarOpen }));
   };
 
-  const toggleDarkMode = () => {
-    setState(prev => ({ ...prev, isDarkMode: !prev.isDarkMode }));
-    // Toggle dark mode class on document
-    document.documentElement.classList.toggle('dark');
-  };
 
   const setActiveModule = (module: string) => {
     setState(prev => ({ ...prev, activeModule: module }));
@@ -107,7 +102,7 @@ export const ModernApp: React.FC = () => {
 
   const sidebarFooter = (
     <div className="space-y-3">
-      <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700 rounded-lg">
+      <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-[#1a1a1d] rounded-lg transition-colors duration-300">
         <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
           <User className="w-4 h-4 text-white" />
         </div>
@@ -122,15 +117,12 @@ export const ModernApp: React.FC = () => {
       </div>
       
       <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={state.isDarkMode ? Sun : Moon}
-          onClick={toggleDarkMode}
-          fullWidth
-        >
-          {state.isDarkMode ? 'Light Mode' : 'Dark Mode'}
-        </Button>
+        <DarkModeToggle 
+          variant="dropdown"
+          size="md"
+          showLabel={true}
+          className="w-full"
+        />
         
         <Button
           variant="ghost"
@@ -151,7 +143,7 @@ export const ModernApp: React.FC = () => {
   );
 
   return (
-    <div className={`min-h-screen bg-gray-50 dark:bg-slate-900 ${state.isDarkMode ? 'dark' : ''}`}>
+    <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0b] transition-colors duration-300">
       <div className="flex">
         {/* Sidebar */}
         <Sidebar
@@ -168,7 +160,7 @@ export const ModernApp: React.FC = () => {
         {/* Main Content */}
         <div className="flex-1 lg:ml-0">
           {/* Top Navigation Bar */}
-          <div className="bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 px-6 py-4">
+          <div className="bg-white dark:bg-[#111113] border-b border-gray-200 dark:border-white/10 px-6 py-4 transition-all duration-300">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -195,5 +187,14 @@ export const ModernApp: React.FC = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+// Main App component wrapped with DarkModeProvider
+export const ModernApp: React.FC = () => {
+  return (
+    <DarkModeProvider defaultMode="system" storageKey="mbbay-theme">
+      <ModernAppContent />
+    </DarkModeProvider>
   );
 };
