@@ -1,0 +1,711 @@
+import React, { useState, useEffect, useCallback } from 'react'
+import { PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Legend, Tooltip, ReferenceLine, ReferenceArea } from 'recharts'
+import { CheckCircle, RefreshCw, TrendingUp, Activity } from 'lucide-react'
+import { fetchWaterMeters, getZoneData, getMonthlyBreakdown, filterByDateRange, monthLabels, type WaterMeter } from '../lib/waterData'
+
+const Card = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
+  <div className={`bg-white dark:bg-[#2C2834] rounded-xl shadow-md hover:shadow-xl border border-gray-200/80 dark:border-white/10 p-4 md:p-6 transition-all duration-300 hover:-translate-y-1 ${className}`}>
+    {children}
+  </div>
+)
+
+const CustomTooltip = ({ active, payload, label }: { active?: boolean, payload?: any[], label?: string | number }) => {
+  if (active && payload && payload.length) {
+    const data = payload[0]?.payload
+    const isHighlighted = data?.isHighlighted
+    
+    return (
+      <div className={`bg-white/95 dark:bg-[#1A181F]/95 backdrop-blur-md p-4 rounded-lg shadow-xl border ${
+        isHighlighted ? 'border-blue-400 ring-2 ring-blue-200' : 'border-gray-200 dark:border-white/20'
+      }`}>
+        <p className="label font-semibold text-gray-800 dark:text-gray-200 mb-2">
+          {`${label}`}
+          {isHighlighted && <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">Selected Month</span>}
+        </p>
+        {payload.map((pld, index) => {
+          // Skip opacity and highlight fields
+          if (pld.dataKey === 'opacity' || pld.dataKey === 'isHighlighted' || pld.dataKey === 'monthIndex') return null
+          
+          return (
+            <div key={index} className="flex items-center justify-between gap-4" style={{ color: pld.color }}>
+              <span className="text-sm">{pld.name}:</span>
+              <span className="font-medium">{pld.value.toLocaleString()} m³</span>
+            </div>
+          )
+        }).filter(Boolean)}
+      </div>
+    )
+  }
+  return null
+}
+
+const DonutChart = ({ value, color, title, subtitle }: { value: number, color: string, title: string, subtitle: string }) => (
+  <div className="flex flex-col items-center text-center transition-transform duration-300 hover:scale-105">
+    <div className="relative w-36 h-36">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie 
+            data={[{ name: 'value', value }]} 
+            dataKey="value" 
+            nameKey="name" 
+            cx="50%" 
+            cy="50%" 
+            innerRadius="75%" 
+            outerRadius="100%" 
+            fill={color} 
+            startAngle={90} 
+            endAngle={90 + (value / 100) * 360} 
+            paddingAngle={0}
+          >
+            <Cell fill={color} />
+          </Pie>
+          <Pie 
+            data={[{ name: 'bg', value: 100 }]} 
+            dataKey="value" 
+            nameKey="name" 
+            cx="50%" 
+            cy="50%" 
+            innerRadius="75%" 
+            outerRadius="100%" 
+            fill={`${color}20`} 
+            startAngle={0} 
+            endAngle={360} 
+          />
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <span className="text-3xl font-bold text-[#4E4456] dark:text-white">{title}</span>
+      </div>
+    </div>
+    <div className="mt-3 text-center">
+      <h3 className="font-semibold text-lg text-[#4E4456] dark:text-white">{subtitle}</h3>
+    </div>
+  </div>
+)
+
+export const ZoneAnalysisTab = () => {
+  const [waterMeters, setWaterMeters] = useState<WaterMeter[]>([])
+  const [selectedMonth, setSelectedMonth] = useState(3) // Apr-25 (index 3)
+  const [selectedZone, setSelectedZone] = useState('Zone_08')
+  const [zoneData, setZoneData] = useState<any>({})
+  const [zones, setZones] = useState<string[]>([])
+  const [monthlyTrend, setMonthlyTrend] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+
+  // Load initial data
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const meters = await fetchWaterMeters()
+        const uniqueZones = [...new Set(meters.map(m => m.zone).filter(Boolean))]
+        setZones(uniqueZones)
+        setWaterMeters(meters)
+      } catch (error) {
+        console.error('Error loading water data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [])
+
+  // Update data when filters change
+  const updateFilteredData = useCallback(() => {
+    if (waterMeters.length === 0) return
+
+    setIsAnimating(true)
+    setCurrentPage(1) // Reset to first page when filters change
+    
+    setTimeout(() => {
+      // Calculate zone data for the selected month (single month range)
+      const zoneAnalysis = getZoneData(waterMeters, selectedZone, selectedMonth, selectedMonth)
+      setZoneData(zoneAnalysis)
+      
+      // Create monthly trend data centered around selected month
+      // Show 3 months before and 3 months after selected month for focused view
+      const monthRange = 3 // Number of months to show before and after
+      const startIdx = Math.max(0, selectedMonth - monthRange)
+      const endIdx = Math.min(monthLabels.length - 1, selectedMonth + monthRange)
+      
+      const trendData = []
+      for (let index = startIdx; index <= endIdx; index++) {
+        const bulkData = getMonthlyBreakdown(waterMeters, index, index, { zone: selectedZone, label: 'L2' })
+        const individualData = getMonthlyBreakdown(waterMeters, index, index, { zone: selectedZone })
+        
+        // Subtract bulk from individual to get actual individual consumption
+        const bulkTotal = bulkData[0]?.consumption || 0
+        const totalZone = individualData[0]?.consumption || 0
+        const individualTotal = totalZone - bulkTotal
+        const loss = bulkTotal - individualTotal
+        
+        // Add highlighting flag for selected month
+        const isSelected = index === selectedMonth
+        
+        trendData.push({
+          month: monthLabels[index],
+          'Zone Bulk': bulkTotal,
+          'Individual Total': Math.max(0, individualTotal),
+          'Water Loss': Math.max(0, loss),
+          isHighlighted: isSelected,
+          monthIndex: index,
+          // Add opacity for visual focus
+          opacity: isSelected ? 1 : 0.7 - Math.abs(index - selectedMonth) * 0.1
+        })
+      }
+      
+      setMonthlyTrend(trendData)
+      setIsAnimating(false)
+    }, 200)
+  }, [waterMeters, selectedZone, selectedMonth])
+
+  useEffect(() => {
+    updateFilteredData()
+  }, [updateFilteredData])
+
+  const kpis = [
+    { 
+      title: "ZONE BULK METER", 
+      value: `${Math.round(zoneData.bulkTotal || 0).toLocaleString()} m³`, 
+      subValue: selectedZone, 
+      color: "text-blue-500" 
+    },
+    { 
+      title: "INDIVIDUAL METERS TOTAL", 
+      value: `${Math.round(zoneData.individualTotal || 0).toLocaleString()} m³`, 
+      subValue: `${zoneData.individualMeters?.length || 0} meters`, 
+      color: "text-green-500" 
+    },
+    { 
+      title: "WATER LOSS/VARIANCE", 
+      value: `${Math.round(zoneData.waterLoss || 0).toLocaleString()} m³`, 
+      subValue: `${zoneData.lossPercentage?.toFixed(1)}% variance`, 
+      color: "text-red-500" 
+    },
+    { 
+      title: "ZONE EFFICIENCY", 
+      value: `${zoneData.efficiency?.toFixed(1)}%`, 
+      subValue: "Meter coverage", 
+      color: "text-yellow-500" 
+    },
+  ]
+
+  if (loading) {
+    return <div className="text-center p-8">Loading zone analysis...</div>
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-500 mr-2">Select Month</label>
+              <select 
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                className="p-2 border rounded-md dark:bg-white/10 transition-all duration-200"
+              >
+                {monthLabels.map((month, index) => (
+                  <option key={index} value={index}>{month}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-500 mr-2">Filter by Zone</label>
+              <select 
+                value={selectedZone}
+                onChange={(e) => setSelectedZone(e.target.value)}
+                className="p-2 border rounded-md dark:bg-white/10 transition-all duration-200"
+              >
+                {zones.map(zone => (
+                  <option key={zone} value={zone}>{zone}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <button 
+            onClick={() => { setSelectedMonth(3); setSelectedZone('Zone_08'); }}
+            className="text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-all duration-200 hover:scale-105"
+          >
+            <RefreshCw className={`w-4 h-4 ${isAnimating ? 'animate-spin' : ''}`} /> Reset Filters
+          </button>
+        </div>
+      </Card>
+
+      <Card className={`transition-all duration-500 ${isAnimating ? 'opacity-70' : 'opacity-100'}`}>
+        <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white mb-2">{selectedZone} Analysis for {monthLabels[selectedMonth]}</h3>
+        <p className="text-sm text-gray-500 mb-4">Zone bulk vs individual meters consumption analysis</p>
+        <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 transition-all duration-500 ${isAnimating ? 'scale-95' : 'scale-100'}`}>
+          <DonutChart 
+            value={100} 
+            color="#3B82F6" 
+            title={Math.round(zoneData.bulkTotal || 0).toLocaleString()} 
+            subtitle="Zone Bulk Meter" 
+          />
+          <DonutChart 
+            value={Math.round(zoneData.efficiency || 0)} 
+            color="#10B981" 
+            title={Math.round(zoneData.individualTotal || 0).toLocaleString()} 
+            subtitle="Individual Meters Total" 
+          />
+          <DonutChart 
+            value={Math.round(zoneData.lossPercentage || 0)} 
+            color="#F94144" 
+            title={Math.round(zoneData.waterLoss || 0).toLocaleString()} 
+            subtitle="Water Loss Distribution" 
+          />
+        </div>
+      </Card>
+
+      <Card className={`transition-all duration-500 ${isAnimating ? 'opacity-70' : 'opacity-100'}`}>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white">
+              Zone Consumption Trend
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Showing data around {monthLabels[selectedMonth]} (±3 months)
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Activity className={`w-5 h-5 ${isAnimating ? 'animate-pulse text-blue-500' : 'text-gray-400'}`} />
+            <span className="text-xs text-gray-500">
+              {isAnimating ? 'Updating...' : 'Live'}
+            </span>
+          </div>
+        </div>
+        
+        <ResponsiveContainer width="100%" height={350}>
+          <LineChart 
+            data={monthlyTrend} 
+            margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+            key={`chart-${selectedMonth}-${selectedZone}`} // Force re-render on change
+          >
+            <defs>
+              <linearGradient id="colorBulk" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
+                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.2}/>
+              </linearGradient>
+              <linearGradient id="colorIndividual" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
+                <stop offset="95%" stopColor="#10B981" stopOpacity={0.2}/>
+              </linearGradient>
+              <linearGradient id="colorLoss" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#F94144" stopOpacity={0.8}/>
+                <stop offset="95%" stopColor="#F94144" stopOpacity={0.2}/>
+              </linearGradient>
+            </defs>
+            
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(200,200,200,0.1)" />
+            
+            <XAxis 
+              dataKey="month" 
+              stroke="#9E9AA7" 
+              fontSize={12} 
+              tickLine={false} 
+              axisLine={false}
+              tick={({ x, y, payload }) => {
+                const isSelected = monthlyTrend.find(d => d.month === payload.value)?.isHighlighted
+                return (
+                  <text 
+                    x={x} 
+                    y={y} 
+                    dy={16} 
+                    textAnchor="middle" 
+                    fill={isSelected ? '#3B82F6' : '#9E9AA7'}
+                    fontSize={isSelected ? 13 : 12}
+                    fontWeight={isSelected ? 600 : 400}
+                  >
+                    {payload.value}
+                  </text>
+                )
+              }}
+            />
+            
+            <YAxis 
+              stroke="#9E9AA7" 
+              fontSize={12} 
+              tickLine={false} 
+              axisLine={false}
+              tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
+            />
+            
+            <Tooltip content={<CustomTooltip />} />
+            
+            <Legend 
+              wrapperStyle={{fontSize: "14px"}}
+              iconType="line"
+            />
+            
+            {/* Highlight area for selected month */}
+            {monthlyTrend.map((entry, index) => {
+              if (entry.isHighlighted) {
+                return (
+                  <ReferenceArea
+                    key={`ref-${index}`}
+                    x1={index > 0 ? monthlyTrend[index - 1].month : entry.month}
+                    x2={index < monthlyTrend.length - 1 ? monthlyTrend[index + 1].month : entry.month}
+                    y1={0}
+                    y2={Math.max(...monthlyTrend.map(d => Math.max(d['Zone Bulk'], d['Individual Total'], d['Water Loss'])))}
+                    fill="#3B82F6"
+                    fillOpacity={0.1}
+                    strokeOpacity={0.3}
+                  />
+                )
+              }
+              return null
+            })}
+            
+            {/* Zone Bulk Line with area */}
+            <Area
+              type="monotone"
+              dataKey="Zone Bulk"
+              stroke="#3B82F6"
+              strokeWidth={3}
+              fill="url(#colorBulk)"
+              fillOpacity={0.3}
+              animationDuration={1000}
+              animationBegin={0}
+              dot={(props) => {
+                const { cx, cy, payload } = props
+                if (payload.isHighlighted) {
+                  return (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={6}
+                      fill="#3B82F6"
+                      stroke="#fff"
+                      strokeWidth={2}
+                      className="animate-pulse"
+                    />
+                  )
+                }
+                return <circle cx={cx} cy={cy} r={4} fill="#3B82F6" stroke="#fff" strokeWidth={1} />
+              }}
+            />
+            
+            {/* Individual Total Line */}
+            <Line
+              type="monotone"
+              dataKey="Individual Total"
+              stroke="#10B981"
+              strokeWidth={3}
+              strokeDasharray="5 5"
+              animationDuration={1000}
+              animationBegin={200}
+              dot={(props) => {
+                const { cx, cy, payload } = props
+                if (payload.isHighlighted) {
+                  return (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={6}
+                      fill="#10B981"
+                      stroke="#fff"
+                      strokeWidth={2}
+                      className="animate-pulse"
+                    />
+                  )
+                }
+                return <circle cx={cx} cy={cy} r={4} fill="#10B981" stroke="#fff" strokeWidth={1} />
+              }}
+            />
+            
+            {/* Water Loss Line */}
+            <Line
+              type="monotone"
+              dataKey="Water Loss"
+              stroke="#F94144"
+              strokeWidth={2}
+              strokeDasharray="2 2"
+              animationDuration={1000}
+              animationBegin={400}
+              dot={(props) => {
+                const { cx, cy, payload } = props
+                if (payload.isHighlighted) {
+                  return (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={6}
+                      fill="#F94144"
+                      stroke="#fff"
+                      strokeWidth={2}
+                      className="animate-pulse"
+                    />
+                  )
+                }
+                return <circle cx={cx} cy={cy} r={3} fill="#F94144" stroke="#fff" strokeWidth={1} />
+              }}
+            />
+            
+            {/* Reference line for selected month */}
+            {monthlyTrend.map((entry, index) => {
+              if (entry.isHighlighted) {
+                return (
+                  <ReferenceLine 
+                    key={`line-${index}`}
+                    x={entry.month} 
+                    stroke="#3B82F6" 
+                    strokeWidth={2}
+                    strokeDasharray="8 8"
+                    label={{
+                      value: "Selected",
+                      position: "top",
+                      fill: "#3B82F6",
+                      fontSize: 12
+                    }}
+                  />
+                )
+              }
+              return null
+            })}
+          </LineChart>
+        </ResponsiveContainer>
+        
+        {/* Chart Legend with values */}
+        <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          {monthlyTrend.find(d => d.isHighlighted) && (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Zone Bulk</span>
+                </div>
+                <span className="text-sm font-semibold">
+                  {monthlyTrend.find(d => d.isHighlighted)?.['Zone Bulk'].toLocaleString()} m³
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Individual</span>
+                </div>
+                <span className="text-sm font-semibold">
+                  {monthlyTrend.find(d => d.isHighlighted)?.['Individual Total'].toLocaleString()} m³
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Water Loss</span>
+                </div>
+                <span className="text-sm font-semibold">
+                  {monthlyTrend.find(d => d.isHighlighted)?.['Water Loss'].toLocaleString()} m³
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {kpis.map(kpi => (
+          <Card key={kpi.title} className="flex items-center gap-4">
+            <CheckCircle className={`w-8 h-8 ${kpi.color}`} />
+            <div>
+              <p className="text-sm text-gray-500">{kpi.title}</p>
+              <p className="font-bold text-xl text-[#4E4456] dark:text-white">{kpi.value}</p>
+              <p className="text-xs text-gray-400">{kpi.subValue}</p>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Card>
+        <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white mb-4">Individual Meters - {selectedZone}</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-white/5">
+              <tr>
+                {['Meter Label', 'Account #', 'Type', 'Jan-25', 'Feb-25', 'Mar-25', 'Apr-25', 'May-25', 'Jun-25', 'Jul-25', 'Total', 'Status'].map(h => 
+                  <th key={h} className="px-4 py-3">{h}</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {/* Zone bulk meter row - always show at top */}
+              {zoneData.bulkMeters?.map((meter: WaterMeter) => (
+                <tr key={meter.id} className="bg-blue-50 dark:bg-blue-500/10 font-semibold">
+                  <td className="px-4 py-2">{meter.meter_label}</td>
+                  <td className="px-4 py-2">{meter.account_number}</td>
+                  <td className="px-4 py-2">{meter.type}</td>
+                  <td className="px-4 py-2">{meter.jan_25?.toLocaleString()}</td>
+                  <td className="px-4 py-2">{meter.feb_25?.toLocaleString()}</td>
+                  <td className="px-4 py-2">{meter.mar_25?.toLocaleString()}</td>
+                  <td className="px-4 py-2">{meter.apr_25?.toLocaleString()}</td>
+                  <td className="px-4 py-2">{meter.may_25?.toLocaleString()}</td>
+                  <td className="px-4 py-2">{meter.jun_25?.toLocaleString()}</td>
+                  <td className="px-4 py-2">{meter.jul_25?.toLocaleString()}</td>
+                  <td className="px-4 py-2">{(meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25 + meter.jul_25).toLocaleString()}</td>
+                  <td className="px-4 py-2 text-blue-600">L2 - Zone Bulk</td>
+                </tr>
+              ))}
+              
+              {/* Individual meters with pagination */}
+              {(() => {
+                const individualMeters = zoneData.individualMeters || []
+                const totalPages = Math.ceil(individualMeters.length / itemsPerPage)
+                const startIndex = (currentPage - 1) * itemsPerPage
+                const endIndex = startIndex + itemsPerPage
+                const currentMeters = individualMeters.slice(startIndex, endIndex)
+                
+                return currentMeters.map((meter: WaterMeter) => {
+                  const total = meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25 + meter.jul_25
+                  const status = total > 10 ? 'Normal' : 'No Usage'
+                  
+                  return (
+                    <tr key={meter.id} className="border-b dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5">
+                      <td className="px-4 py-2 font-medium">{meter.meter_label}</td>
+                      <td className="px-4 py-2">{meter.account_number}</td>
+                      <td className="px-4 py-2">{meter.type}</td>
+                      <td className="px-4 py-2">{meter.jan_25}</td>
+                      <td className="px-4 py-2">{meter.feb_25}</td>
+                      <td className="px-4 py-2">{meter.mar_25}</td>
+                      <td className="px-4 py-2">{meter.apr_25}</td>
+                      <td className="px-4 py-2">{meter.may_25}</td>
+                      <td className="px-4 py-2">{meter.jun_25}</td>
+                      <td className="px-4 py-2">{meter.jul_25}</td>
+                      <td className="px-4 py-2 font-semibold">{total}</td>
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          status === 'Normal' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {status}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })
+              })()}
+            </tbody>
+          </table>
+        </div>
+        
+        {/* Pagination Controls */}
+        {(() => {
+          const individualMeters = zoneData.individualMeters || []
+          const totalPages = Math.ceil(individualMeters.length / itemsPerPage)
+          const startIndex = (currentPage - 1) * itemsPerPage
+          const endIndex = Math.min(startIndex + itemsPerPage, individualMeters.length)
+          
+          return (
+            <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4">
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-gray-500">
+                  Showing {individualMeters.length > 0 ? startIndex + 1 : 0} to {endIndex} of {individualMeters.length} individual meters
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Show:</span>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value))
+                      setCurrentPage(1) // Reset to first page when changing items per page
+                    }}
+                    className="px-2 py-1 border rounded-md text-sm bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    {individualMeters.length > 50 && <option value={individualMeters.length}>All ({individualMeters.length})</option>}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 border rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                
+                {/* Page numbers */}
+                <div className="flex items-center gap-1">
+                  {totalPages <= 5 ? (
+                    // Show all pages if 5 or less
+                    Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-3 py-1 rounded-md transition-colors ${
+                          currentPage === page 
+                            ? 'bg-blue-500 text-white' 
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))
+                  ) : (
+                    // Show abbreviated page numbers for many pages
+                    <>
+                      {currentPage > 2 && (
+                        <>
+                          <button
+                            onClick={() => setCurrentPage(1)}
+                            className="px-3 py-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                          >
+                            1
+                          </button>
+                          {currentPage > 3 && <span className="px-2">...</span>}
+                        </>
+                      )}
+                      
+                      {Array.from({ length: 3 }, (_, i) => {
+                        const page = currentPage - 1 + i
+                        if (page > 0 && page <= totalPages) {
+                          return (
+                            <button
+                              key={page}
+                              onClick={() => setCurrentPage(page)}
+                              className={`px-3 py-1 rounded-md transition-colors ${
+                                currentPage === page 
+                                  ? 'bg-blue-500 text-white' 
+                                  : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          )
+                        }
+                        return null
+                      }).filter(Boolean)}
+                      
+                      {currentPage < totalPages - 1 && (
+                        <>
+                          {currentPage < totalPages - 2 && <span className="px-2">...</span>}
+                          <button
+                            onClick={() => setCurrentPage(totalPages)}
+                            className="px-3 py-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                          >
+                            {totalPages}
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+                
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages || totalPages === 0}
+                  className="px-3 py-1 border rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+      </Card>
+    </div>
+  )
+}
