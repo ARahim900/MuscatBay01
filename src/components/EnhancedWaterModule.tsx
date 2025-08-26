@@ -4,6 +4,7 @@ import { OverviewTab } from './OverviewTab'
 import { EnhancedZoneAnalysisTab } from './EnhancedZoneAnalysisTab'
 import { ConsumptionByTypeTab } from './ConsumptionByTypeTab'
 import { MainDatabaseTab } from './MainDatabaseTab'
+import { DailyConsumptionDashboard } from './DailyConsumptionDashboard'
 import { MenuBar } from './ui/glow-menu'
 
 const Card = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
@@ -44,6 +45,13 @@ export const EnhancedWaterModule = () => {
       gradient: "radial-gradient(circle, rgba(139,92,246,0.15) 0%, rgba(139,92,246,0.06) 50%, rgba(139,92,246,0) 100%)",
       iconColor: "text-purple-500"
     },
+    { 
+      icon: LayoutDashboard, 
+      label: 'Daily Consumption', 
+      href: '#',
+      gradient: "radial-gradient(circle, rgba(236,72,153,0.15) 0%, rgba(236,72,153,0.06) 50%, rgba(236,72,153,0) 100%)",
+      iconColor: "text-pink-500"
+    },
   ]
 
   const renderSubModule = () => {
@@ -56,6 +64,8 @@ export const EnhancedWaterModule = () => {
         return <ConsumptionByTypeTab />
       case 'Main Database': 
         return <MainDatabaseTab />
+      case 'Daily Consumption': 
+        return <DailyConsumptionDashboard />
       default: 
         return <div className="text-center p-8 bg-gray-100 dark:bg-white/5 rounded-lg">Component for "{activeSubModule}" is under construction.</div>
     }
