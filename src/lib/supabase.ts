@@ -10,7 +10,7 @@ export type WaterMeter = {
   id: number
   meter_label: string
   account_number: string
-  label: 'L1' | 'L2' | 'L3' | 'L4' | 'DC'
+  label: 'L1' | 'L2' | 'L3' | 'L4' | 'DC' | 'N/A'
   zone: string
   parent_meter: string
   type: string
@@ -21,6 +21,6 @@ export type WaterMeter = {
   may_25: number
   jun_25: number
   jul_25: number
-  created_at: string
-  updated_at: string
+  created_at?: string
+  updated_at?: string
 }

@@ -83,28 +83,100 @@ const DonutChart = ({ value, color, title, subtitle }: { value: number, color: s
   </div>
 )
 
+// Zone mapping for dropdown options
+const ZONE_OPTIONS = [
+  { value: 'Main Bulk', label: 'Main Bulk Meter', dbValue: 'Main Bulk' },
+  { value: 'Direct Connection', label: 'Direct Connections', dbValue: 'Direct Connection' },
+  { value: 'Zone_01_(FM)', label: 'Zone 01(FM)', dbValue: 'Zone_01_(FM)' },
+  { value: 'Zone_03_(A)', label: 'Zone 03(A)', dbValue: 'Zone_03_(A)' },
+  { value: 'Zone_03_(B)', label: 'Zone 03(B)', dbValue: 'Zone_03_(B)' },
+  { value: 'Zone_05', label: 'Zone 05', dbValue: 'Zone_05' },
+  { value: 'Zone_08', label: 'Zone 08', dbValue: 'Zone_08_(North_Golf)' },
+  { value: 'Zone_VS', label: 'Zone VS', dbValue: 'Zone_VS' },
+  { value: 'Zone_SC', label: 'Zone SC', dbValue: 'Zone_SC' }
+]
+
+// Gauge component for zone metrics
+const ZoneGauge = ({ title, value, maxValue, color, unit = 'm³', showDifference = false, difference = 0 }: {
+  title: string
+  value: number
+  maxValue: number
+  color: string
+  unit?: string
+  showDifference?: boolean
+  difference?: number
+}) => {
+  const percentage = maxValue > 0 ? Math.min((value / maxValue) * 100, 100) : 0
+  const circumference = 2 * Math.PI * 45 // radius = 45
+  const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`
+  
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-32 h-32">
+        <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 100 100">
+          {/* Background circle */}
+          <circle
+            cx="50"
+            cy="50"
+            r="45"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="8"
+            className="text-gray-200 dark:text-gray-700"
+          />
+          {/* Progress circle */}
+          <circle
+            cx="50"
+            cy="50"
+            r="45"
+            fill="none"
+            stroke={color}
+            strokeWidth="8"
+            strokeDasharray={strokeDasharray}
+            strokeLinecap="round"
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-bold text-[#4E4456] dark:text-white">
+            {value.toLocaleString()}
+          </span>
+          <span className="text-xs text-gray-500">{unit}</span>
+          {showDifference && (
+            <span className={`text-xs font-semibold ${difference >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+              {difference >= 0 ? '+' : ''}{difference.toLocaleString()}
+            </span>
+          )}
+        </div>
+      </div>
+      <h3 className="mt-2 text-sm font-semibold text-center text-[#4E4456] dark:text-white">
+        {title}
+      </h3>
+    </div>
+  )
+}
+
 export const ZoneAnalysisTab = () => {
   const [waterMeters, setWaterMeters] = useState<WaterMeter[]>([])
   const [selectedMonth, setSelectedMonth] = useState(3) // Apr-25 (index 3)
-  const [selectedZone, setSelectedZone] = useState('Zone_08')
-  const [zoneData, setZoneData] = useState<any>({})
-  const [zones, setZones] = useState<string[]>([])
-  const [monthlyTrend, setMonthlyTrend] = useState<any[]>([])
+  const [selectedZone, setSelectedZone] = useState('Zone_03_(A)')
+  const [zoneMetrics, setZoneMetrics] = useState<any>({})
+  const [zoneMeters, setZoneMeters] = useState<WaterMeter[]>([])
   const [loading, setLoading] = useState(true)
   const [isAnimating, setIsAnimating] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [itemsPerPage, setItemsPerPage] = useState(15)
 
   // Load initial data
   useEffect(() => {
     const loadData = async () => {
       try {
+        console.log('🔍 Zone Analysis: Loading water meters data...')
         const meters = await fetchWaterMeters()
-        const uniqueZones = [...new Set(meters.map(m => m.zone).filter(Boolean))]
-        setZones(uniqueZones)
         setWaterMeters(meters)
+        console.log(`📊 Zone Analysis: Loaded ${meters.length} meters`)
       } catch (error) {
-        console.error('Error loading water data:', error)
+        console.error('❌ Zone Analysis: Error loading water data:', error)
       } finally {
         setLoading(false)
       }
@@ -112,173 +184,212 @@ export const ZoneAnalysisTab = () => {
     loadData()
   }, [])
 
-  // Update data when filters change
-  const updateFilteredData = useCallback(() => {
+  // Calculate zone metrics
+  const calculateZoneMetrics = useCallback(() => {
     if (waterMeters.length === 0) return
-
-    setIsAnimating(true)
-    setCurrentPage(1) // Reset to first page when filters change
     
-    setTimeout(() => {
-      // Calculate zone data for the selected month (single month range)
-      const zoneAnalysis = getZoneData(waterMeters, selectedZone, selectedMonth, selectedMonth)
-      setZoneData(zoneAnalysis)
-      
-      // Create monthly trend data centered around selected month
-      // Show 3 months before and 3 months after selected month for focused view
-      const monthRange = 3 // Number of months to show before and after
-      const startIdx = Math.max(0, selectedMonth - monthRange)
-      const endIdx = Math.min(monthLabels.length - 1, selectedMonth + monthRange)
-      
-      const trendData = []
-      for (let index = startIdx; index <= endIdx; index++) {
-        const bulkData = getMonthlyBreakdown(waterMeters, index, index, { zone: selectedZone, label: 'L2' })
-        const individualData = getMonthlyBreakdown(waterMeters, index, index, { zone: selectedZone })
-        
-        // Subtract bulk from individual to get actual individual consumption
-        const bulkTotal = bulkData[0]?.consumption || 0
-        const totalZone = individualData[0]?.consumption || 0
-        const individualTotal = totalZone - bulkTotal
-        const loss = bulkTotal - individualTotal
-        
-        // Add highlighting flag for selected month
-        const isSelected = index === selectedMonth
-        
-        trendData.push({
-          month: monthLabels[index],
-          'Zone Bulk': bulkTotal,
-          'Individual Total': Math.max(0, individualTotal),
-          'Water Loss': Math.max(0, loss),
-          isHighlighted: isSelected,
-          monthIndex: index,
-          // Add opacity for visual focus
-          opacity: isSelected ? 1 : 0.7 - Math.abs(index - selectedMonth) * 0.1
-        })
-      }
-      
-      setMonthlyTrend(trendData)
-      setIsAnimating(false)
-    }, 200)
-  }, [waterMeters, selectedZone, selectedMonth])
+    // Get the database value for the selected zone
+    const selectedZoneOption = ZONE_OPTIONS.find(opt => opt.value === selectedZone)
+    const dbZoneValue = selectedZoneOption?.dbValue || selectedZone
+    
+    console.log(`🏗️ Calculating metrics for zone: ${selectedZone} (DB: ${dbZoneValue})`)
+    
+    // Filter meters for the selected zone
+    const allZoneMeters = waterMeters.filter(meter => meter.zone === dbZoneValue)
+    
+    // Get L2 bulk meters for this zone (zone distribution)
+    const zoneBulkMeters = allZoneMeters.filter(meter => meter.label === 'L2')
+    
+    // Get L3 individual connections for this zone (building level)
+    const zoneIndividualL3Meters = allZoneMeters.filter(meter => meter.label === 'L3')
+    
+    // Calculate totals for selected month range
+    const calculateConsumption = (meters: WaterMeter[]) => {
+      return meters.reduce((total, meter) => {
+        return total + (
+          (meter.jan_25 || 0) + (meter.feb_25 || 0) + (meter.mar_25 || 0) +
+          (meter.apr_25 || 0) + (meter.may_25 || 0) + (meter.jun_25 || 0)
+        )
+      }, 0)
+    }
+    
+    const zoneBulkTotal = calculateConsumption(zoneBulkMeters)
+    const zoneIndividualTotal = calculateConsumption(zoneIndividualL3Meters)
+    const difference = zoneBulkTotal - zoneIndividualTotal
+    
+    // Calculate maximum value for gauges (for percentage calculation)
+    const maxValue = Math.max(zoneBulkTotal, zoneIndividualTotal, Math.abs(difference)) || 1000
+    
+    console.log(`📊 Zone Metrics:`, {
+      zoneBulkTotal,
+      zoneIndividualTotal,
+      difference,
+      bulkMeters: zoneBulkMeters.length,
+      individualMeters: zoneIndividualL3Meters.length,
+      totalMeters: allZoneMeters.length
+    })
+    
+    setZoneMetrics({
+      zoneBulkTotal,
+      zoneIndividualTotal,
+      difference,
+      maxValue,
+      bulkMeters: zoneBulkMeters,
+      individualMeters: zoneIndividualL3Meters,
+      allMeters: allZoneMeters
+    })
+    
+    setZoneMeters(allZoneMeters)
+  }, [waterMeters, selectedZone])
 
+  // Update data when filters change  
   useEffect(() => {
-    updateFilteredData()
-  }, [updateFilteredData])
+    calculateZoneMetrics()
+  }, [calculateZoneMetrics])
 
-  const kpis = [
-    { 
-      title: "ZONE BULK METER", 
-      value: `${Math.round(zoneData.bulkTotal || 0).toLocaleString()} m³`, 
-      subValue: selectedZone, 
-      color: "text-blue-500" 
-    },
-    { 
-      title: "INDIVIDUAL METERS TOTAL", 
-      value: `${Math.round(zoneData.individualTotal || 0).toLocaleString()} m³`, 
-      subValue: `${zoneData.individualMeters?.length || 0} meters`, 
-      color: "text-green-500" 
-    },
-    { 
-      title: "WATER LOSS/VARIANCE", 
-      value: `${Math.round(zoneData.waterLoss || 0).toLocaleString()} m³`, 
-      subValue: `${zoneData.lossPercentage?.toFixed(1)}% variance`, 
-      color: "text-red-500" 
-    },
-    { 
-      title: "ZONE EFFICIENCY", 
-      value: `${zoneData.efficiency?.toFixed(1)}%`, 
-      subValue: "Meter coverage", 
-      color: "text-yellow-500" 
-    },
-  ]
+  // Handle zone change
+  const handleZoneChange = (newZone: string) => {
+    setSelectedZone(newZone)
+    setIsAnimating(true)
+    setCurrentPage(1)
+    setTimeout(() => setIsAnimating(false), 500)
+  }
+
+  // Get paginated meters for the table
+  const paginatedMeters = zoneMeters.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+  const totalPages = Math.ceil(zoneMeters.length / itemsPerPage)
 
   if (loading) {
-    return <div className="text-center p-8">Loading zone analysis...</div>
+    return (
+      <div className="flex items-center justify-center p-12">
+        <div className="flex items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <span className="text-lg">Loading zone analysis...</span>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-6">
+      {/* Zone Selection */}
       <Card>
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white mb-2">Zone Analysis Dashboard</h3>
+            <p className="text-sm text-gray-500">Select a zone to view detailed consumption metrics and meter information</p>
+          </div>
           <div className="flex items-center gap-4">
             <div>
-              <label className="text-sm font-medium text-gray-500 mr-2">Select Month</label>
-              <select 
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                className="p-2 border rounded-md dark:bg-white/10 transition-all duration-200"
-              >
-                {monthLabels.map((month, index) => (
-                  <option key={index} value={index}>{month}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500 mr-2">Filter by Zone</label>
+              <label className="text-sm font-medium text-gray-500 mr-2">Select Zone</label>
               <select 
                 value={selectedZone}
-                onChange={(e) => setSelectedZone(e.target.value)}
-                className="p-2 border rounded-md dark:bg-white/10 transition-all duration-200"
+                onChange={(e) => handleZoneChange(e.target.value)}
+                className="p-3 border border-gray-300 rounded-lg bg-white dark:bg-gray-800 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 min-w-[200px]"
               >
-                {zones.map(zone => (
-                  <option key={zone} value={zone}>{zone}</option>
+                {ZONE_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
             </div>
+            <button 
+              onClick={() => handleZoneChange('Zone_03_(A)')}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center gap-2 transition-all duration-200"
+            >
+              <RefreshCw className={`w-4 h-4 ${isAnimating ? 'animate-spin' : ''}`} /> Reset
+            </button>
           </div>
-          <button 
-            onClick={() => { setSelectedMonth(3); setSelectedZone('Zone_08'); }}
-            className="text-gray-500 hover:text-gray-800 flex items-center gap-1 transition-all duration-200 hover:scale-105"
-          >
-            <RefreshCw className={`w-4 h-4 ${isAnimating ? 'animate-spin' : ''}`} /> Reset Filters
-          </button>
         </div>
       </Card>
 
+      {/* Zone Metrics with Gauges */}
       <Card className={`transition-all duration-500 ${isAnimating ? 'opacity-70' : 'opacity-100'}`}>
-        <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white mb-2">{selectedZone} Analysis for {monthLabels[selectedMonth]}</h3>
-        <p className="text-sm text-gray-500 mb-4">Zone bulk vs individual meters consumption analysis</p>
-        <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 transition-all duration-500 ${isAnimating ? 'scale-95' : 'scale-100'}`}>
-          <DonutChart 
-            value={100} 
-            color="#3B82F6" 
-            title={Math.round(zoneData.bulkTotal || 0).toLocaleString()} 
-            subtitle="Zone Bulk Meter" 
+        <div className="mb-6">
+          <h3 className="text-xl font-semibold text-[#4E4456] dark:text-white mb-2">
+            {ZONE_OPTIONS.find(opt => opt.value === selectedZone)?.label || selectedZone} Metrics
+          </h3>
+          <p className="text-sm text-gray-500">Zone bulk consumption vs individual L3 connections analysis</p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <ZoneGauge
+            title="Zone Bulk Total"
+            value={zoneMetrics.zoneBulkTotal || 0}
+            maxValue={zoneMetrics.maxValue || 1000}
+            color="#3B82F6"
+            unit="m³"
           />
-          <DonutChart 
-            value={Math.round(zoneData.efficiency || 0)} 
-            color="#10B981" 
-            title={Math.round(zoneData.individualTotal || 0).toLocaleString()} 
-            subtitle="Individual Meters Total" 
+          
+          <ZoneGauge
+            title="Individual L3 Total"
+            value={zoneMetrics.zoneIndividualTotal || 0}
+            maxValue={zoneMetrics.maxValue || 1000}
+            color="#10B981"
+            unit="m³"
           />
-          <DonutChart 
-            value={Math.round(zoneData.lossPercentage || 0)} 
-            color="#F94144" 
-            title={Math.round(zoneData.waterLoss || 0).toLocaleString()} 
-            subtitle="Water Loss Distribution" 
+          
+          <ZoneGauge
+            title="Difference"
+            value={Math.abs(zoneMetrics.difference || 0)}
+            maxValue={zoneMetrics.maxValue || 1000}
+            color={zoneMetrics.difference >= 0 ? "#F59E0B" : "#EF4444"}
+            unit="m³"
+            showDifference={true}
+            difference={zoneMetrics.difference || 0}
           />
+        </div>
+        
+        <div className="mt-6 grid grid-cols-3 gap-4 text-center">
+          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+            <p className="text-sm text-gray-600 dark:text-gray-300">L2 Bulk Meters</p>
+            <p className="text-2xl font-bold text-blue-600">{zoneMetrics.bulkMeters?.length || 0}</p>
+          </div>
+          <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+            <p className="text-sm text-gray-600 dark:text-gray-300">L3 Individual Meters</p>
+            <p className="text-2xl font-bold text-green-600">{zoneMetrics.individualMeters?.length || 0}</p>
+          </div>
+          <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4">
+            <p className="text-sm text-gray-600 dark:text-gray-300">Total Zone Meters</p>
+            <p className="text-2xl font-bold text-gray-600">{zoneMeters.length}</p>
+          </div>
         </div>
       </Card>
 
+      {/* Dynamic Zone Meters Table */}
       <Card className={`transition-all duration-500 ${isAnimating ? 'opacity-70' : 'opacity-100'}`}>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex justify-between items-center mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white">
-              Zone Consumption Trend
+            <h3 className="text-xl font-semibold text-[#4E4456] dark:text-white">
+              {ZONE_OPTIONS.find(opt => opt.value === selectedZone)?.label || selectedZone} - All Meters
             </h3>
             <p className="text-sm text-gray-500 mt-1">
-              Showing data around {monthLabels[selectedMonth]} (±3 months)
+              Comprehensive meter information for the selected zone ({zoneMeters.length} meters)
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Activity className={`w-5 h-5 ${isAnimating ? 'animate-pulse text-blue-500' : 'text-gray-400'}`} />
-            <span className="text-xs text-gray-500">
-              {isAnimating ? 'Updating...' : 'Live'}
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-500">
+              Page {currentPage} of {totalPages}
             </span>
+            <div className="flex gap-1">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
         
-        <ResponsiveContainer width="100%" height={350}>
+        <div className="overflow-x-auto">
           <LineChart 
             data={monthlyTrend} 
             margin={{ top: 5, right: 20, left: -10, bottom: 5 }}

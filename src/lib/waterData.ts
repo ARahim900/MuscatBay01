@@ -73,61 +73,112 @@ export const fetchWaterMeters = async (): Promise<WaterMeter[]> => {
 }
 
 export const calculateWaterMetrics = (meters: WaterMeter[]) => {
-  const l1Meters = meters.filter(m => m.label === 'L1')
-  const l2Meters = meters.filter(m => m.label === 'L2')
-  const l3Meters = meters.filter(m => m.label === 'L3')
-  const l4Meters = meters.filter(m => m.label === 'L4')
-  const dcMeters = meters.filter(m => m.label === 'DC')
+  console.log('=== WATER METRICS CALCULATION ===')
+  
+  // Filter meters by level 
+  const l1Meters = meters.filter(m => m.label === 'L1') // NAMA Main source
+  const l2Meters = meters.filter(m => m.label === 'L2') // Zone Bulks
+  const l3Meters = meters.filter(m => m.label === 'L3') // Building Bulks + Villas  
+  const l4Meters = meters.filter(m => m.label === 'L4') // Apartments
+  const dcMeters = meters.filter(m => m.label === 'DC') // Direct Connections
+  
+  console.log('Meter distribution:', {
+    L1: l1Meters.length,
+    L2: l2Meters.length, 
+    L3: l3Meters.length,
+    L4: l4Meters.length,
+    DC: dcMeters.length
+  })
 
-  // A1 = Sum of all L1 meters (should be 1 meter only)
-  const A1 = l1Meters.reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0)
-  
-  // A2 = Sum of all L2 meters + Sum of all DC meters
-  const A2 = l2Meters.reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0) +
-             dcMeters.reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0)
-  
-  // A3_Individual = Sum of (L3 villas only) + Sum of all L4 meters + Sum of all DC meters
-  const A3_Individual = l3Meters.reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0) +
-                        l4Meters.reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0) +
-                        dcMeters.reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0)
-  
-  // A4 = End users (L4 apartments + L3 End)
-  const A4 = l4Meters.reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0) +
-             l3Meters.filter(m => m.type?.toLowerCase().includes('end')).reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0)
+  // Helper function to calculate total consumption for a set of meters
+  const calculateTotal = (meterArray: WaterMeter[]) => {
+    return meterArray.reduce((sum, meter) => 
+      sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0)
+  }
 
-  // Loss calculations
+  // === DATA FLOW CALCULATIONS PER YOUR ARCHITECTURE ===
+  
+  // A1 = L1 (NAMA) - Main water input to system
+  const A1 = calculateTotal(l1Meters)
+  
+  // A2 = L2 (Zone Bulks) + DC (Direct Connections) - After main distribution network
+  const A2 = calculateTotal(l2Meters) + calculateTotal(dcMeters)
+  
+  // A3 (Bulk) = L3 (Building Bulks + Villas) + DC - Zone network distribution only
+  const A3_Bulk = calculateTotal(l3Meters) + calculateTotal(dcMeters)
+  
+  // A3 (Individual) = L4 (Apartments) + L3 Villas + DC - Total individual consumption
+  const A3_Individual = calculateTotal(l4Meters) + calculateTotal(l3Meters) + calculateTotal(dcMeters)
+
+  // === LOSS TRACKING COMPONENTS PER YOUR SPECIFICATIONS ===
+  
+  // Stage 1: Main distribution network loss (A1 → A2)
   const Stage1_Loss = A1 - A2
-  const Stage2_Loss = A2 - A3_Individual
-  const L3_Building_Bulks_Total = l3Meters.filter(m => !m.type?.toLowerCase().includes('end')).reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0)
-  const L4_Total = l4Meters.reduce((sum, meter) => sum + (meter.jan_25 + meter.feb_25 + meter.mar_25 + meter.apr_25 + meter.may_25 + meter.jun_25), 0)
-  const Stage3_Loss = L3_Building_Bulks_Total - L4_Total
-  const Total_Loss = Stage1_Loss + Stage2_Loss
+  
+  // Stage 2 (Bulk): Zone network losses only (A2 → A3 Bulk) 
+  const Stage2_Loss_Bulk = A2 - A3_Bulk
+  
+  // Stage 2 (Individual): Total zone + building losses (A2 → A3 Individual)
+  const Stage2_Loss_Individual = A2 - A3_Individual
+  
+  // Stage 3: Building internal losses (A3 Bulk → A3 Individual)
+  const Stage3_Loss = A3_Bulk - A3_Individual
 
-  // Percentages
+  // Total system losses
+  const Total_Loss = Stage1_Loss + Stage2_Loss_Individual
+
+  // === EFFICIENCY CALCULATIONS ===
+  
   const Stage1_Loss_Percentage = A1 > 0 ? (Stage1_Loss / A1) * 100 : 0
-  const Stage2_Loss_Percentage = A2 > 0 ? (Stage2_Loss / A2) * 100 : 0
-  const Stage3_Loss_Percentage = L3_Building_Bulks_Total > 0 ? (Stage3_Loss / L3_Building_Bulks_Total) * 100 : 0
+  const Stage2_Bulk_Loss_Percentage = A2 > 0 ? (Stage2_Loss_Bulk / A2) * 100 : 0
+  const Stage2_Individual_Loss_Percentage = A2 > 0 ? (Stage2_Loss_Individual / A2) * 100 : 0
+  const Stage3_Loss_Percentage = A3_Bulk > 0 ? (Stage3_Loss / A3_Bulk) * 100 : 0
   const Total_Loss_Percentage = A1 > 0 ? (Total_Loss / A1) * 100 : 0
+  const System_Efficiency = A1 > 0 ? (A3_Individual / A1) * 100 : 0
+
+  // Log calculations for debugging
+  console.log('=== CALCULATED VALUES ===')
+  console.log(`A1 (NAMA): ${A1.toLocaleString()} m³`)
+  console.log(`A2 (L2 + DC): ${A2.toLocaleString()} m³`)
+  console.log(`A3 Bulk (L3 + DC): ${A3_Bulk.toLocaleString()} m³`)
+  console.log(`A3 Individual (L4 + L3 + DC): ${A3_Individual.toLocaleString()} m³`)
+  console.log('=== LOSSES ===')
+  console.log(`Stage 1 Loss: ${Stage1_Loss.toLocaleString()} m³ (${Stage1_Loss_Percentage.toFixed(1)}%)`)
+  console.log(`Stage 2 Bulk Loss: ${Stage2_Loss_Bulk.toLocaleString()} m³ (${Stage2_Bulk_Loss_Percentage.toFixed(1)}%)`)
+  console.log(`Stage 2 Individual Loss: ${Stage2_Loss_Individual.toLocaleString()} m³ (${Stage2_Individual_Loss_Percentage.toFixed(1)}%)`)
+  console.log(`Stage 3 Loss: ${Stage3_Loss.toLocaleString()} m³ (${Stage3_Loss_Percentage.toFixed(1)}%)`)
+  console.log(`Total Loss: ${Total_Loss.toLocaleString()} m³ (${Total_Loss_Percentage.toFixed(1)}%)`)
+  console.log(`System Efficiency: ${System_Efficiency.toFixed(1)}%`)
 
   return {
+    // Basic counts
     totalMeters: meters.length,
     l1Count: l1Meters.length,
     l2Count: l2Meters.length,
     l3Count: l3Meters.length,
     l4Count: l4Meters.length,
     dcCount: dcMeters.length,
-    A1,
-    A2,
-    A3_Individual,
-    A4,
-    Stage1_Loss,
-    Stage2_Loss,
-    Stage3_Loss,
-    Total_Loss,
+    
+    // Flow values (your architecture)
+    A1,                    // L1 NAMA
+    A2,                    // L2 + DC
+    A3_Bulk,              // L3 + DC (zone network)
+    A3_Individual,        // L4 + L3 + DC (individual consumption)
+    
+    // Loss tracking (your specifications)
+    Stage1_Loss,                    // A1 → A2
+    Stage2_Loss_Bulk,              // A2 → A3 Bulk
+    Stage2_Loss_Individual,        // A2 → A3 Individual
+    Stage3_Loss,                   // A3 Bulk → A3 Individual
+    Total_Loss,                    // Total system loss
+    
+    // Percentages
     Stage1_Loss_Percentage,
-    Stage2_Loss_Percentage,
+    Stage2_Bulk_Loss_Percentage,
+    Stage2_Individual_Loss_Percentage, 
     Stage3_Loss_Percentage,
-    Total_Loss_Percentage
+    Total_Loss_Percentage,
+    System_Efficiency
   }
 }
 

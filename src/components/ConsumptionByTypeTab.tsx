@@ -34,7 +34,8 @@ const chartConfig: ChartConfig = {
 
 export const ConsumptionByTypeTab = () => {
   const [waterMeters, setWaterMeters] = useState<WaterMeter[]>([])
-  const [selectedType, setSelectedType] = useState('Commercial')
+  const [selectedType, setSelectedType] = useState('')
+  const [availableTypes, setAvailableTypes] = useState<string[]>([])
   const [monthlyBreakdown, setMonthlyBreakdown] = useState<any[]>([])
   const [typeTableData, setTypeTableData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -48,8 +49,21 @@ export const ConsumptionByTypeTab = () => {
   useEffect(() => {
     const loadData = async () => {
       try {
+        console.log('🔍 Consumption By Type: Loading water meters data from Supabase...')
         const meters = await fetchWaterMeters()
+        
+        // Get unique types for the dropdown
+        const uniqueTypes = [...new Set(meters.map(m => m.type).filter(Boolean))].sort()
+        console.log(`📊 Found ${uniqueTypes.length} unique meter types:`, uniqueTypes)
+        
         setWaterMeters(meters)
+        setAvailableTypes(uniqueTypes)
+        
+        // Set initial type to the first available type
+        if (uniqueTypes.length > 0) {
+          setSelectedType(uniqueTypes[0])
+          console.log(`🔄 Set initial selected type to: ${uniqueTypes[0]}`)
+        }
       } catch (error) {
         console.error('Error loading water data:', error)
       } finally {
@@ -265,8 +279,6 @@ export const ConsumptionByTypeTab = () => {
     },
   ]
 
-  const availableTypes = ['Commercial', 'Residential', 'Irrigation', 'Common', 'Building', 'Bulk']
-
   if (loading) {
     return <div className="text-center p-8">Loading consumption analysis...</div>
   }
@@ -281,7 +293,7 @@ export const ConsumptionByTypeTab = () => {
               <button 
                 key={type}
                 onClick={() => setSelectedType(type)}
-                className={`px-4 py-2 rounded-lg transition-all duration-200 active:scale-95 ${
+                className={`px-4 py-2 rounded-lg transition-all duration-150 active:scale-98 ${
                   selectedType === type 
                     ? 'bg-green-500 text-white shadow-lg' 
                     : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -293,7 +305,7 @@ export const ConsumptionByTypeTab = () => {
           </div>
           <button
             onClick={() => setShowValidation(!showValidation)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-150 ${
               validationStatus?.isValid 
                 ? 'bg-green-100 text-green-700 hover:bg-green-200' 
                 : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
@@ -389,20 +401,20 @@ export const ConsumptionByTypeTab = () => {
             </h3>
             <p className="text-sm text-gray-500">{monthLabels[startMonth]} to {monthLabels[endMonth]}</p>
           </div>
-          <button className="bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-all active:scale-95">
+          <button className="bg-green-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors duration-150 active:scale-98">
             <Download className="h-4 w-4" /> Export
           </button>
         </div>
-        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 transition-all duration-500 ${isAnimating ? 'opacity-50 scale-95' : 'opacity-100 scale-100'}`}>
+        <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4 transition-all duration-200 ${isAnimating ? 'opacity-70' : 'opacity-100'}`}>
           {kpis.map(kpi => (
-            <div key={kpi.title} className={`p-4 rounded-lg ${kpi.color} dark:bg-white/5 transition-all duration-300 hover:shadow-lg hover:-translate-y-1`}>
+            <div key={kpi.title} className={`p-4 rounded-lg ${kpi.color} dark:bg-white/5 transition-all duration-150 hover:shadow-lg hover:-translate-y-0.5`}>
               <div className="flex items-center gap-4">
-                <div className={`${kpi.iconColor.replace('text-','bg-')}/20 p-2 rounded-lg transition-transform duration-200 hover:scale-110`}>
+                <div className={`${kpi.iconColor.replace('text-','bg-')}/20 p-2 rounded-lg transition-transform duration-150 hover:scale-105`}>
                   <kpi.icon className={`w-6 h-6 ${kpi.iconColor}`} />
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">{kpi.title}</p>
-                  <p className="font-bold text-xl text-[#4E4456] dark:text-white transition-all duration-200">{kpi.value}</p>
+                  <p className="font-bold text-xl text-[#4E4456] dark:text-white">{kpi.value}</p>
                   <p className="text-xs text-gray-400">{kpi.subtitle}</p>
                 </div>
               </div>
@@ -423,7 +435,7 @@ export const ConsumptionByTypeTab = () => {
         description={`Consumption pattern from ${monthLabels[startMonth]} to ${monthLabels[endMonth]}`}
         height="h-[300px]"
         showLegend={false}
-        className={`transition-all duration-500 ${isAnimating ? 'opacity-70' : 'opacity-100'}`}
+        className={`transition-opacity duration-200 ${isAnimating ? 'opacity-70' : 'opacity-100'}`}
       />
 
       <Card>
@@ -480,7 +492,7 @@ export const ConsumptionByTypeTab = () => {
         </div>
       </Card>
 
-      <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 transition-all duration-500 ${isAnimating ? 'opacity-70 scale-95' : 'opacity-100 scale-100'}`}>
+      <div className={`grid grid-cols-1 lg:grid-cols-2 gap-6 transition-opacity duration-200 ${isAnimating ? 'opacity-70' : 'opacity-100'}`}>
         <ModernBarChart
           data={monthlyBreakdown}
           config={{

@@ -34,8 +34,8 @@ const glowVariants = {
     opacity: 1,
     scale: 2,
     transition: {
-      opacity: { duration: 0.5, ease: [0.4, 0, 0.2, 1] },
-      scale: { duration: 0.5, type: "spring", stiffness: 300, damping: 25 },
+      opacity: { duration: 0.2, ease: [0.4, 0, 0.2, 1] },
+      scale: { duration: 0.2, type: "spring", stiffness: 400, damping: 30 },
     },
   },
 }
@@ -45,7 +45,7 @@ const navGlowVariants = {
   hover: {
     opacity: 1,
     transition: {
-      duration: 0.5,
+      duration: 0.2,
       ease: [0.4, 0, 0.2, 1],
     },
   },
@@ -53,9 +53,9 @@ const navGlowVariants = {
 
 const sharedTransition = {
   type: "spring" as const,
-  stiffness: 100,
-  damping: 20,
-  duration: 0.5,
+  stiffness: 150,
+  damping: 25,
+  duration: 0.2,
 }
 
 export const MenuBar = React.forwardRef<HTMLDivElement, MenuBarProps>(

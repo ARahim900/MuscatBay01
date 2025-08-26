@@ -1,13 +1,13 @@
 import React, { useState } from 'react'
 import { LayoutDashboard, MapPin, PieChart as PieIcon, Database } from 'lucide-react'
 import { OverviewTab } from './OverviewTab'
-import { ZoneAnalysisTab } from './ZoneAnalysisTab'
+import { EnhancedZoneAnalysisTab } from './EnhancedZoneAnalysisTab'
 import { ConsumptionByTypeTab } from './ConsumptionByTypeTab'
 import { MainDatabaseTab } from './MainDatabaseTab'
 import { MenuBar } from './ui/glow-menu'
 
 const Card = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
-  <div className={`bg-white dark:bg-[#2C2834] rounded-xl shadow-md hover:shadow-xl border border-gray-200/80 dark:border-white/10 p-4 md:p-6 transition-all duration-300 hover:-translate-y-1 ${className}`}>
+  <div className={`bg-white dark:bg-[#2C2834] rounded-xl shadow-md hover:shadow-lg border border-gray-200/80 dark:border-white/10 p-4 md:p-6 transition-all duration-150 hover:-translate-y-0.5 ${className}`}>
     {children}
   </div>
 )
@@ -51,7 +51,7 @@ export const EnhancedWaterModule = () => {
       case 'Overview': 
         return <OverviewTab />
       case 'Zone Analysis': 
-        return <ZoneAnalysisTab />
+        return <EnhancedZoneAnalysisTab />
       case 'Consumption by Type': 
         return <ConsumptionByTypeTab />
       case 'Main Database': 

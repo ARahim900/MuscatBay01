@@ -68,41 +68,42 @@ export const WaterOverviewTab = () => {
 
   return (
     <div className="space-y-6">
+      {/* Meter Inventory */}
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white">Meter Inventory</h3>
           <p className="text-sm text-gray-500">Total: {metrics.totalMeters} meters</p>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="p-4 rounded-lg bg-blue-100 dark:bg-white/5 flex items-center gap-4">
             <div className="bg-blue-500/20 p-2 rounded-full">
               <Droplets className="w-6 h-6 text-blue-500" />
             </div>
             <div>
               <p className="font-bold text-xl text-[#4E4456] dark:text-white">{metrics.totalMeters}</p>
-              <p className="text-xs text-gray-500">TOTAL METERS</p>
+              <p className="text-xs text-gray-500">TOTAL</p>
               <p className="text-xs text-gray-400">All levels</p>
             </div>
           </div>
           
-          <div className="p-4 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center gap-4">
-            <div className="bg-gray-500/20 p-2 rounded-full">
-              <Droplets className="w-6 h-6 text-gray-500" />
+          <div className="p-4 rounded-lg bg-purple-100 dark:bg-white/5 flex items-center gap-4">
+            <div className="bg-purple-500/20 p-2 rounded-full">
+              <Droplets className="w-6 h-6 text-purple-500" />
             </div>
             <div>
               <p className="font-bold text-xl text-[#4E4456] dark:text-white">{metrics.l1Count}</p>
-              <p className="text-xs text-gray-500">L1 METERS</p>
+              <p className="text-xs text-gray-500">L1 NAMA</p>
               <p className="text-xs text-gray-400">Main source</p>
             </div>
           </div>
           
-          <div className="p-4 rounded-lg bg-yellow-100 dark:bg-white/5 flex items-center gap-4">
-            <div className="bg-yellow-500/20 p-2 rounded-full">
-              <Droplets className="w-6 h-6 text-yellow-500" />
+          <div className="p-4 rounded-lg bg-indigo-100 dark:bg-white/5 flex items-center gap-4">
+            <div className="bg-indigo-500/20 p-2 rounded-full">
+              <Droplets className="w-6 h-6 text-indigo-500" />
             </div>
             <div>
               <p className="font-bold text-xl text-[#4E4456] dark:text-white">{metrics.l2Count}</p>
-              <p className="text-xs text-gray-500">L2 METERS</p>
+              <p className="text-xs text-gray-500">L2 ZONES</p>
               <p className="text-xs text-gray-400">Zone bulk</p>
             </div>
           </div>
@@ -113,19 +114,179 @@ export const WaterOverviewTab = () => {
             </div>
             <div>
               <p className="font-bold text-xl text-[#4E4456] dark:text-white">{metrics.l3Count}</p>
-              <p className="text-xs text-gray-500">L3 METERS</p>
-              <p className="text-xs text-gray-400">Buildings/Villas</p>
+              <p className="text-xs text-gray-500">L3 BUILDINGS</p>
+              <p className="text-xs text-gray-400">Bulks/Villas</p>
             </div>
           </div>
           
-          <div className="p-4 rounded-lg bg-purple-100 dark:bg-white/5 flex items-center gap-4">
-            <div className="bg-purple-500/20 p-2 rounded-full">
-              <Droplets className="w-6 h-6 text-purple-500" />
+          <div className="p-4 rounded-lg bg-yellow-100 dark:bg-white/5 flex items-center gap-4">
+            <div className="bg-yellow-500/20 p-2 rounded-full">
+              <Droplets className="w-6 h-6 text-yellow-500" />
             </div>
             <div>
               <p className="font-bold text-xl text-[#4E4456] dark:text-white">{metrics.l4Count}</p>
-              <p className="text-xs text-gray-500">L4 METERS</p>
-              <p className="text-xs text-gray-400">Apartments</p>
+              <p className="text-xs text-gray-500">L4 APARTMENTS</p>
+              <p className="text-xs text-gray-400">Individual</p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-lg bg-orange-100 dark:bg-white/5 flex items-center gap-4">
+            <div className="bg-orange-500/20 p-2 rounded-full">
+              <Droplets className="w-6 h-6 text-orange-500" />
+            </div>
+            <div>
+              <p className="font-bold text-xl text-[#4E4456] dark:text-white">{metrics.dcCount}</p>
+              <p className="text-xs text-gray-500">DC DIRECT</p>
+              <p className="text-xs text-gray-400">Connections</p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Water System Flow Analysis */}
+      <Card>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white">Water System Flow Analysis</h3>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            <span className="text-sm text-gray-500">Live Data</span>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* A1 - NAMA Input */}
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 p-6 rounded-xl border border-purple-200 dark:border-purple-700/30">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-purple-500/20 p-3 rounded-full">
+                <Home className="w-6 h-6 text-purple-600" />
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">A1</p>
+                <p className="text-xs text-purple-600 dark:text-purple-400">NAMA Input</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-3xl font-bold text-[#4E4456] dark:text-white">{metrics.A1?.toLocaleString() || 0}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">m³ total consumption</p>
+              <div className="text-xs text-purple-600 dark:text-purple-400">L1 Main Source</div>
+            </div>
+          </div>
+
+          {/* A2 - Zone Distribution */}
+          <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/20 dark:to-indigo-800/20 p-6 rounded-xl border border-indigo-200 dark:border-indigo-700/30">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-indigo-500/20 p-3 rounded-full">
+                <ChevronsRight className="w-6 h-6 text-indigo-600" />
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-indigo-700 dark:text-indigo-300">A2</p>
+                <p className="text-xs text-indigo-600 dark:text-indigo-400">Zone Distribution</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-3xl font-bold text-[#4E4456] dark:text-white">{metrics.A2?.toLocaleString() || 0}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">m³ total consumption</p>
+              <div className="text-xs text-indigo-600 dark:text-indigo-400">L2 Zones + DC</div>
+            </div>
+          </div>
+
+          {/* A3 Bulk */}
+          <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 p-6 rounded-xl border border-green-200 dark:border-green-700/30">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-green-500/20 p-3 rounded-full">
+                <Droplets className="w-6 h-6 text-green-600" />
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-green-700 dark:text-green-300">A3</p>
+                <p className="text-xs text-green-600 dark:text-green-400">Bulk Distribution</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-3xl font-bold text-[#4E4456] dark:text-white">{metrics.A3_Bulk?.toLocaleString() || 0}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">m³ total consumption</p>
+              <div className="text-xs text-green-600 dark:text-green-400">L3 Buildings + DC</div>
+            </div>
+          </div>
+
+          {/* A3 Individual */}
+          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-800/20 p-6 rounded-xl border border-yellow-200 dark:border-yellow-700/30">
+            <div className="flex items-center justify-between mb-4">
+              <div className="bg-yellow-500/20 p-3 rounded-full">
+                <User className="w-6 h-6 text-yellow-600" />
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-300">A3</p>
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">Individual</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-3xl font-bold text-[#4E4456] dark:text-white">{metrics.A3_Individual?.toLocaleString() || 0}</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">m³ total consumption</p>
+              <div className="text-xs text-yellow-600 dark:text-yellow-400">L4 + L3 + DC</div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Loss Analysis */}
+      <Card>
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white">Loss Tracking Analysis</h3>
+          <div className="text-sm text-gray-500">
+            System Efficiency: <span className="font-semibold text-green-600">{metrics.System_Efficiency?.toFixed(1) || 0}%</span>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Stage 1 Loss */}
+          <div className="bg-red-50 dark:bg-red-900/20 p-6 rounded-xl border border-red-200 dark:border-red-700/30">
+            <div className="text-center">
+              <p className="text-sm font-semibold text-red-700 dark:text-red-300 mb-2">Stage 1 Loss</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">A1 → A2 (Main Network)</p>
+              <p className="text-3xl font-bold text-red-600 dark:text-red-400">{metrics.Stage1_Loss?.toLocaleString() || 0}</p>
+              <p className="text-sm text-gray-500">m³</p>
+              <div className="mt-3 bg-red-100 dark:bg-red-800/30 rounded-full px-3 py-1">
+                <span className="text-sm font-semibold text-red-700 dark:text-red-300">{metrics.Stage1_Loss_Percentage?.toFixed(1) || 0}%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Stage 2 Individual Loss */}
+          <div className="bg-orange-50 dark:bg-orange-900/20 p-6 rounded-xl border border-orange-200 dark:border-orange-700/30">
+            <div className="text-center">
+              <p className="text-sm font-semibold text-orange-700 dark:text-orange-300 mb-2">Stage 2 Individual</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">A2 → A3 (Zone + Building)</p>
+              <p className="text-3xl font-bold text-orange-600 dark:text-orange-400">{metrics.Stage2_Loss_Individual?.toLocaleString() || 0}</p>
+              <p className="text-sm text-gray-500">m³</p>
+              <div className="mt-3 bg-orange-100 dark:bg-orange-800/30 rounded-full px-3 py-1">
+                <span className="text-sm font-semibold text-orange-700 dark:text-orange-300">{metrics.Stage2_Individual_Loss_Percentage?.toFixed(1) || 0}%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Stage 3 Loss */}
+          <div className="bg-amber-50 dark:bg-amber-900/20 p-6 rounded-xl border border-amber-200 dark:border-amber-700/30">
+            <div className="text-center">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300 mb-2">Stage 3 Loss</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">A3 Bulk → Individual</p>
+              <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">{metrics.Stage3_Loss?.toLocaleString() || 0}</p>
+              <p className="text-sm text-gray-500">m³</p>
+              <div className="mt-3 bg-amber-100 dark:bg-amber-800/30 rounded-full px-3 py-1">
+                <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">{metrics.Stage3_Loss_Percentage?.toFixed(1) || 0}%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Total Loss */}
+          <div className="bg-gray-50 dark:bg-gray-800/50 p-6 rounded-xl border border-gray-200 dark:border-gray-700/30">
+            <div className="text-center">
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Total System Loss</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">A1 → A3 Individual</p>
+              <p className="text-3xl font-bold text-gray-700 dark:text-gray-300">{metrics.Total_Loss?.toLocaleString() || 0}</p>
+              <p className="text-sm text-gray-500">m³</p>
+              <div className="mt-3 bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1">
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">{metrics.Total_Loss_Percentage?.toFixed(1) || 0}%</span>
+              </div>
             </div>
           </div>
         </div>
