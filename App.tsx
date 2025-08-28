@@ -10,6 +10,7 @@ import { EnhancedSTPModule } from './src/components/EnhancedSTPModule';
 import { FirefightingDashboard } from './src/components/FirefightingDashboard';
 import { SimpleSTPModuleBackup } from './src/components/SimpleSTPModuleBackup';
 import { STPErrorBoundary } from './src/components/STPErrorBoundary';
+import { SupabaseConnectionTest } from './components/SupabaseConnectionTest';
 import { theme } from './src/lib/theme';
 
 
@@ -468,7 +469,35 @@ const MainDatabase = () => {
 
 // -- WATER MODULE (Enhanced with Supabase) --
 const WaterModule = () => {
-    return <EnhancedWaterModule />;
+    const [showConnectionTest, setShowConnectionTest] = useState(false);
+    
+    return (
+        <div>
+            {/* Connection Test Toggle - Remove this after testing */}
+            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h4 className="font-medium text-blue-800 dark:text-blue-400">Database Connection</h4>
+                        <p className="text-sm text-blue-600 dark:text-blue-300">Test your Supabase connection and daily consumption setup</p>
+                    </div>
+                    <button 
+                        onClick={() => setShowConnectionTest(!showConnectionTest)}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                        {showConnectionTest ? 'Hide Test' : 'Test Connection'}
+                    </button>
+                </div>
+            </div>
+            
+            {showConnectionTest && (
+                <div className="mb-6">
+                    <SupabaseConnectionTest />
+                </div>
+            )}
+            
+            <EnhancedWaterModule />
+        </div>
+    );
 };
 
 

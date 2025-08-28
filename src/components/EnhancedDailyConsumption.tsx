@@ -1,307 +1,329 @@
 import React, { useState, useEffect } from 'react'
 import { 
-  AlertTriangle, TrendingUp, TrendingDown, Droplets, Clock, Activity, 
-  AlertCircle, CheckCircle, Users, Home, BarChart3, Zap, Target, Bell,
-  Calendar, Filter, Download, RefreshCw, MapPin, Thermometer
+  RefreshCw, Calendar, ChevronLeft, ChevronRight, Download, Filter
 } from 'lucide-react'
-import { Card, KpiCard } from './ui'
-import { supabase } from '../lib/supabase'
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend, PieChart, Pie, Cell } from 'recharts'
-import { CompactDateRangeSlider } from './ui/CompactDateRangeSlider'
-import { waterConsumptionData } from '../data/waterConsumptionData'
+import { Card } from './ui'
+import { fetchWaterMeters, monthLabels, type WaterMeter } from '../lib/waterData'
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts'
 
-// Enhanced types for daily consumption data
-interface DailyConsumptionRecord {
-  meter_label: string
-  account_number: string
-  label: string
-  zone: string
-  parent_meter: string
-  type: string
-  jan_25?: number
-  feb_25?: number
-  mar_25?: number
-  apr_25?: number
-  may_25?: number
-  jun_25?: number
-  jul_25?: number
-  [key: string]: string | number | undefined
-}
+// Zone mapping for dropdown options
+const ZONE_OPTIONS = [
+  { value: 'Zone_01_(FM)', label: 'Zone 01(FM)', dbValues: ['Zone_01_(FM)', 'ZONE_01_(FM)', 'Zone 01 (FM)', 'Zone_01_FM', 'Zone 01'] },
+  { value: 'Zone_03_(A)', label: 'Zone 03(A)', dbValues: ['Zone_03_(A)', 'ZONE_03_(A)', 'Zone 03 (A)', 'Zone_03_A', 'Zone 03A'] },
+  { value: 'Zone_03_(B)', label: 'Zone 03(B)', dbValues: ['Zone_03_(B)', 'ZONE_03_(B)', 'Zone 03 (B)', 'Zone_03_B', 'Zone 03B'] },
+  { value: 'Zone_05', label: 'Zone 05', dbValues: ['Zone_05', 'ZONE_05', 'Zone 05', 'Zone05', 'Z05'] },
+  { value: 'Zone_08', label: 'Zone 08', dbValues: ['Zone_08', 'ZONE_08', 'Zone 08', 'Zone08', 'Z08', 'Zone_08_(North_Golf)', 'Zone 08 (North Golf)'] },
+  { value: 'Zone_VS', label: 'Zone VS', dbValues: ['Zone_VS', 'ZONE_VS', 'Zone VS', 'ZoneVS', 'ZVS'] },
+  { value: 'Zone_SC', label: 'Zone SC', dbValues: ['Zone_SC', 'ZONE_SC', 'Zone SC', 'ZoneSC', 'ZSC'] }
+]
 
-interface ZoneConsumption {
-  zone: string
-  consumption: number
-  meters: number
-  average: number
-  trend: 'up' | 'down' | 'stable'
-  changePercent: number
-}
-
-interface ConsumptionAnomaly {
-  account_number: string
-  customer_name: string
-  zone: string
-  type: 'leak' | 'burst' | 'unusual_high' | 'unusual_low' | 'continuous_flow'
-  severity: 'critical' | 'warning' | 'info'
-  description: string
-  detectedDay: number
-  consumption: number
-  estimatedLoss?: number
+// Circular Gauge component matching Zone Analysis style
+const CircularGauge = ({ title, value, maxValue, color, unit = 'm³', showDifference = false, difference = 0 }: {
+  title: string
+  value: number
+  maxValue: number
+  color: string
+  unit?: string
+  showDifference?: boolean
+  difference?: number
+}) => {
+  const percentage = maxValue > 0 ? Math.min((value / maxValue) * 100, 100) : 0
+  const circumference = 2 * Math.PI * 45 // radius = 45
+  const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`
+  
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative w-32 h-32">
+        <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 100 100">
+          {/* Background circle */}
+          <circle
+            cx="50"
+            cy="50"
+            r="45"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="8"
+            className="text-gray-200 dark:text-gray-700"
+          />
+          {/* Progress circle */}
+          <circle
+            cx="50"
+            cy="50"
+            r="45"
+            fill="none"
+            stroke={color}
+            strokeWidth="8"
+            strokeDasharray={strokeDasharray}
+            strokeLinecap="round"
+            className="transition-all duration-500 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-bold text-[#4E4456] dark:text-white">
+            {value.toLocaleString()}
+          </span>
+          <span className="text-xs text-gray-500">{unit}</span>
+          {showDifference && (
+            <span className={`text-xs font-semibold ${difference >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+              {difference >= 0 ? '+' : ''}{difference.toLocaleString()}
+            </span>
+          )}
+        </div>
+      </div>
+      <h3 className="mt-2 text-sm font-semibold text-center text-[#4E4456] dark:text-white">
+        {title}
+      </h3>
+    </div>
+  )
 }
 
 export const EnhancedDailyConsumption: React.FC = () => {
   const [loading, setLoading] = useState(true)
-  const [selectedDay, setSelectedDay] = useState(new Date().getDate())
-  const [selectedZone, setSelectedZone] = useState<string>('all')
-  const [dailyData, setDailyData] = useState<DailyConsumptionRecord[]>([])
-  const [zoneStats, setZoneStats] = useState<ZoneConsumption[]>([])
-  const [anomalies, setAnomalies] = useState<ConsumptionAnomaly[]>([])
-  const [dailyTrend, setDailyTrend] = useState<any[]>([])
-  const [topConsumers, setTopConsumers] = useState<any[]>([])
-  const [hourlyPattern, setHourlyPattern] = useState<any[]>([])
+  const [waterMeters, setWaterMeters] = useState<WaterMeter[]>([])
+  const [selectedZone, setSelectedZone] = useState('Zone_03_(A)')
+  const [selectedDay, setSelectedDay] = useState(15) // Mid-month default
+  const [selectedMeter, setSelectedMeter] = useState<string>('')
+  const [zoneMetrics, setZoneMetrics] = useState<any>({})
+  const [monthlyTrends, setMonthlyTrends] = useState<any[]>([])
+  const [individualMeterTrend, setIndividualMeterTrend] = useState<any[]>([])
+  const [availableZones, setAvailableZones] = useState<string[]>([])
+  const [zoneMeters, setZoneMeters] = useState<WaterMeter[]>([])
+  const [dynamicZoneOptions, setDynamicZoneOptions] = useState(ZONE_OPTIONS)
 
-  // Fetch daily consumption data from Supabase
+  // Load initial data
   useEffect(() => {
-    fetchDailyConsumptionData()
-  }, [selectedDay, selectedZone])
-
-  const fetchDailyConsumptionData = async () => {
-    try {
-      setLoading(true)
-      
-      // Fetch water meters data which contains monthly consumption
-      let query = supabase
-        .from('water_meters')
-        .select('*')
-      
-      if (selectedZone !== 'all') {
-        query = query.ilike('zone', `%${selectedZone}%`)
+    const loadData = async () => {
+      try {
+        console.log('🔍 Daily Consumption: Loading water meters data...')
+        const meters = await fetchWaterMeters()
+        setWaterMeters(meters)
+        console.log(`📊 Daily Consumption: Loaded ${meters.length} meters`)
+        
+        // Get unique zones from the data
+        const uniqueZones = [...new Set(meters.map(meter => meter.zone).filter(Boolean))].sort()
+        console.log('🏗️ Available zones in database:', uniqueZones)
+        setAvailableZones(uniqueZones)
+        
+        // Create dynamic zone options based on actual data
+        const dynamicOptions = uniqueZones.map(zone => {
+          const existingOption = ZONE_OPTIONS.find(opt => 
+            opt.dbValues.some(dbVal => 
+              dbVal.toLowerCase() === zone.toLowerCase() ||
+              zone.toLowerCase().includes(dbVal.toLowerCase()) ||
+              dbVal.toLowerCase().includes(zone.toLowerCase())
+            )
+          )
+          
+          if (existingOption) {
+            return { ...existingOption, actualDbValue: zone }
+          } else {
+            return {
+              value: zone,
+              label: zone.replace(/_/g, ' '),
+              dbValues: [zone],
+              actualDbValue: zone
+            }
+          }
+        })
+        
+        setDynamicZoneOptions(dynamicOptions)
+        
+      } catch (error) {
+        console.error('❌ Daily Consumption: Error loading water data:', error)
+      } finally {
+        setLoading(false)
       }
-      
-      const { data, error } = await query
-      
-      if (error) {
-        console.error('Supabase error:', error)
-        // Use imported CSV data if database is not available
-        setDailyData(waterConsumptionData as DailyConsumptionRecord[])
-        processConsumptionData(waterConsumptionData as DailyConsumptionRecord[])
-      } else if (data && data.length > 0) {
-        setDailyData(data)
-        processConsumptionData(data)
-      } else {
-        // Use imported CSV data if no data in database
-        setDailyData(waterConsumptionData as DailyConsumptionRecord[])
-        processConsumptionData(waterConsumptionData as DailyConsumptionRecord[])
-      }
-    } catch (error) {
-      console.error('Error fetching daily consumption:', error)
-      // Use imported CSV data on error
-      setDailyData(waterConsumptionData as DailyConsumptionRecord[])
-      processConsumptionData(waterConsumptionData as DailyConsumptionRecord[])
-    } finally {
-      setLoading(false)
     }
-  }
+    loadData()
+  }, [])
 
-  const processConsumptionData = (data: DailyConsumptionRecord[]) => {
-    // Process zone statistics
-    const zones = processZoneStatistics(data)
-    setZoneStats(zones)
-    
-    // Process daily trend for the month
-    const trend = processDailyTrend(data)
-    setDailyTrend(trend)
-    
-    // Identify top consumers for selected day
-    const consumers = identifyTopConsumers(data, selectedDay)
-    setTopConsumers(consumers)
-    
-    // Detect anomalies
-    const detectedAnomalies = detectAnomalies(data, selectedDay)
-    setAnomalies(detectedAnomalies)
-    
-    // Generate hourly pattern simulation
-    const pattern = generateHourlyPattern(data, selectedDay)
-    setHourlyPattern(pattern)
-  }
-
-  const generateMockData = (): DailyConsumptionRecord[] => {
-    // Generate mock data based on the CSV structure
-    const zones = ['Zone_03_(A)', 'Zone_03_(B)', 'Zone_05', 'Zone_08', 'Zone_FM']
-    const types = ['Residential (Villa)', 'Zone Bulk', 'MB_Common', 'IRR_Services', 'Retail']
-    const mockData: DailyConsumptionRecord[] = []
-    
-    for (let i = 1; i <= 50; i++) {
-      mockData.push({
-        meter_label: `Meter ${i}`,
-        account_number: `430${String(i).padStart(4, '0')}`,
-        label: i % 3 === 0 ? 'L3' : i % 2 === 0 ? 'L2' : 'DC',
-        zone: zones[Math.floor(Math.random() * zones.length)],
-        parent_meter: 'Main Bulk (NAMA)',
-        type: types[Math.floor(Math.random() * types.length)],
-        jan_25: Math.floor(Math.random() * 500),
-        feb_25: Math.floor(Math.random() * 500),
-        mar_25: Math.floor(Math.random() * 500),
-        apr_25: Math.floor(Math.random() * 500),
-        may_25: Math.floor(Math.random() * 500),
-        jun_25: Math.floor(Math.random() * 500),
-        jul_25: Math.floor(Math.random() * 1000)
-      })
+  // Calculate zone metrics and trends when zone or day changes
+  useEffect(() => {
+    if (waterMeters.length > 0) {
+      calculateZoneMetrics()
+      generateDailyTrends()
     }
-    
-    return mockData
-  }
+  }, [waterMeters, selectedZone, selectedDay])
 
-  const processZoneStatistics = (data: DailyConsumptionRecord[]): ZoneConsumption[] => {
-    const zones = ['Zone_03_(A)', 'Zone_03_(B)', 'Zone_05', 'Zone_08', 'Zone_01_(FM)']
+  // Update individual meter trend when meter selection changes
+  useEffect(() => {
+    if (selectedMeter && waterMeters.length > 0) {
+      generateIndividualMeterTrend()
+    }
+  }, [selectedMeter, waterMeters])
+
+  const calculateZoneMetrics = () => {
+    if (!waterMeters.length) return
+
+    // Find the selected zone's actual database value
+    const selectedZoneOption = dynamicZoneOptions.find(opt => opt.value === selectedZone)
+    const actualZoneValue = selectedZoneOption?.actualDbValue || selectedZone
+
+    // Get zone bulk meters (L2) and individual meters (L3, L4) for the selected zone
+    const zoneBulkMeters = waterMeters.filter(meter => 
+      meter.label === 'L2' && 
+      selectedZoneOption?.dbValues.some(dbVal => 
+        meter.zone?.toLowerCase().includes(dbVal.toLowerCase()) ||
+        dbVal.toLowerCase().includes(meter.zone?.toLowerCase() || '')
+      )
+    )
+
+    const zoneIndividualMeters = waterMeters.filter(meter => 
+      (meter.label === 'L3' || meter.label === 'L4') &&
+      selectedZoneOption?.dbValues.some(dbVal => 
+        meter.zone?.toLowerCase().includes(dbVal.toLowerCase()) ||
+        dbVal.toLowerCase().includes(meter.zone?.toLowerCase() || '')
+      )
+    )
+
+    setZoneMeters([...zoneBulkMeters, ...zoneIndividualMeters])
+
+    // Calculate daily consumption for selected day (simulate from monthly data)
+    const monthKey = `jul_25` as keyof WaterMeter
     
-    return zones.map(zone => {
-      const zoneData = data.filter(d => d.zone === zone || (zone === 'Zone_01_(FM)' && d.zone === 'Zone_01_(FM)'))
-      
-      // For July data, we'll simulate daily breakdown from monthly total
-      const monthlyTotal = zoneData.reduce((sum, d) => sum + (d.jul_25 || 0), 0)
-      const dailyAvg = monthlyTotal / 31
-      const currentDayTotal = dailyAvg * (1 + (Math.random() - 0.5) * 0.3) // Add some variation
-      
-      // Simulate previous day for trend
-      const prevDayTotal = dailyAvg * (1 + (Math.random() - 0.5) * 0.3)
-      const changePercent = prevDayTotal ? ((currentDayTotal - prevDayTotal) / prevDayTotal) * 100 : 0
-      
-      return {
-        zone: zone.replace('_', ' ').replace('(', '').replace(')', ''),
-        consumption: currentDayTotal,
-        meters: zoneData.length,
-        average: zoneData.length > 0 ? currentDayTotal / zoneData.length : 0,
-        trend: changePercent > 5 ? 'up' : changePercent < -5 ? 'down' : 'stable',
-        changePercent
-      }
+    const zoneBulkTotal = zoneBulkMeters.reduce((sum, meter) => {
+      const monthlyValue = meter[monthKey] as number || 0
+      return sum + (monthlyValue / 31) // Convert to daily average
+    }, 0)
+
+    const zoneIndividualTotal = zoneIndividualMeters.reduce((sum, meter) => {
+      const monthlyValue = meter[monthKey] as number || 0
+      return sum + (monthlyValue / 31) // Convert to daily average
+    }, 0)
+
+    const totalConsumption = zoneBulkTotal + zoneIndividualTotal
+    const difference = zoneBulkTotal - zoneIndividualTotal
+
+    // Find maximum value for gauge scaling
+    const maxValue = Math.max(zoneBulkTotal, totalConsumption, Math.abs(difference)) * 1.2
+
+    setZoneMetrics({
+      zoneBulkTotal,
+      totalConsumption,
+      difference,
+      maxValue,
+      zoneBulkMeters: zoneBulkMeters.length,
+      individualMeters: zoneIndividualMeters.length
     })
   }
 
-  const processDailyTrend = (data: DailyConsumptionRecord[]) => {
-    const trend = []
+  const generateDailyTrends = () => {
+    if (!waterMeters.length) return
+
+    const selectedZoneOption = dynamicZoneOptions.find(opt => opt.value === selectedZone)
     
-    // Since we have monthly totals, simulate daily breakdown
-    const monthlyTotal = data.reduce((sum, d) => sum + (d.jul_25 || 0), 0)
-    const baseDaily = monthlyTotal / 31
+    const zoneBulkMeters = waterMeters.filter(meter => 
+      meter.label === 'L2' && 
+      selectedZoneOption?.dbValues.some(dbVal => 
+        meter.zone?.toLowerCase().includes(dbVal.toLowerCase()) ||
+        dbVal.toLowerCase().includes(meter.zone?.toLowerCase() || '')
+      )
+    )
+
+    const zoneIndividualMeters = waterMeters.filter(meter => 
+      (meter.label === 'L3' || meter.label === 'L4') &&
+      selectedZoneOption?.dbValues.some(dbVal => 
+        meter.zone?.toLowerCase().includes(dbVal.toLowerCase()) ||
+        dbVal.toLowerCase().includes(meter.zone?.toLowerCase() || '')
+      )
+    )
+
+    // Generate daily data for July 2025 (31 days)
+    const dailyTrends = []
+    const daysInJuly = 31
     
-    for (let day = 1; day <= 31; day++) {
-      // Add realistic daily variation
-      const isWeekend = [6, 7, 13, 14, 20, 21, 27, 28].includes(day)
-      const variation = isWeekend ? 1.2 : 1.0
-      const randomFactor = 0.8 + Math.random() * 0.4
-      const dayTotal = baseDaily * variation * randomFactor
+    // Get July monthly totals
+    const bulkJulyTotal = zoneBulkMeters.reduce((sum, meter) => sum + (meter.jul_25 || 0), 0)
+    const individualJulyTotal = zoneIndividualMeters.reduce((sum, meter) => sum + (meter.jul_25 || 0), 0)
+    
+    // Calculate daily averages
+    const bulkDailyAvg = bulkJulyTotal / daysInJuly
+    const individualDailyAvg = individualJulyTotal / daysInJuly
+    
+    for (let day = 1; day <= daysInJuly; day++) {
+      // Add realistic daily variations
+      const isWeekend = [6, 7, 13, 14, 20, 21, 27, 28].includes(day) // Saturdays and Sundays in July 2025
+      const isHoliday = [1].includes(day) // Assuming July 1st might be a holiday
       
-      trend.push({
+      // Weekend and holiday patterns
+      let weekendFactor = 1.0
+      if (isWeekend) {
+        weekendFactor = 0.85 // 15% less consumption on weekends
+      } else if (isHoliday) {
+        weekendFactor = 0.7 // 30% less on holidays
+      }
+      
+      // Add seasonal variation (higher consumption in mid-month summer peak)
+      const seasonalFactor = 0.8 + 0.4 * Math.sin((day - 1) * Math.PI / 30) // Sine wave for seasonal variation
+      
+      // Add random daily variation (±15%)
+      const randomFactor = 0.85 + Math.random() * 0.3
+      
+      // Calculate daily values with variations
+      const dailyBulk = Math.round(bulkDailyAvg * weekendFactor * seasonalFactor * randomFactor)
+      const dailyIndividual = Math.round(individualDailyAvg * weekendFactor * seasonalFactor * randomFactor)
+      const dailyTotal = dailyBulk + dailyIndividual
+      const dailyLoss = Math.max(0, dailyBulk - dailyIndividual)
+      
+      dailyTrends.push({
         day: day,
         date: `Jul ${day}`,
-        consumption: dayTotal,
-        meters: Math.floor(data.length * (0.8 + Math.random() * 0.2))
+        dayName: new Date(2025, 6, day).toLocaleDateString('en-US', { weekday: 'short' }), // July is month 6 (0-indexed)
+        bulkConsumption: dailyBulk,
+        totalConsumption: dailyTotal,
+        individualConsumption: dailyIndividual,
+        loss: dailyLoss,
+        isWeekend: isWeekend,
+        isHoliday: isHoliday
       })
     }
-    
-    return trend
+
+    setMonthlyTrends(dailyTrends) // Reusing the same state variable for consistency
   }
 
-  const identifyTopConsumers = (data: DailyConsumptionRecord[], day: number) => {
-    // Simulate daily consumption from monthly totals
-    const consumersWithData = data
-      .map(d => {
-        const monthlyConsumption = d.jul_25 || 0
-        const dailyAvg = monthlyConsumption / 31
-        const dailyConsumption = dailyAvg * (0.8 + Math.random() * 0.4) // Add variation
-        
-        return {
-          account: d.account_number,
-          name: d.meter_label,
-          zone: d.zone?.replace('_', ' ').replace('(', '').replace(')', '') || 'Unknown',
-          consumption: dailyConsumption
-        }
-      })
-      .filter(d => d.consumption > 0)
-      .sort((a, b) => b.consumption - a.consumption)
-      .slice(0, 10)
-    
-    return consumersWithData
-  }
+  const generateIndividualMeterTrend = () => {
+    if (!selectedMeter || !waterMeters.length) return
 
-  const detectAnomalies = (data: DailyConsumptionRecord[], day: number): ConsumptionAnomaly[] => {
-    const anomalies: ConsumptionAnomaly[] = []
-    
-    data.forEach(record => {
-      const monthlyConsumption = record.jul_25 || 0
-      const dailyAvg = monthlyConsumption / 31
-      const consumption = dailyAvg * (0.8 + Math.random() * 0.4)
+    const meter = waterMeters.find(m => m.account_number === selectedMeter)
+    if (!meter) return
+
+    // Generate daily consumption for July 2025 based on monthly total
+    const julyTotal = meter.jul_25 || 0
+    const dailyAverage = julyTotal / 31
+    const dailyTrend = []
+
+    for (let day = 1; day <= 31; day++) {
+      // Add realistic variations based on meter type
+      let variation = 1.0
       
-      // Detect unusual high consumption (>200% of average)
-      if (consumption > dailyAvg * 2 && consumption > 10) {
-        anomalies.push({
-          account_number: record.account_number,
-          customer_name: record.meter_label,
-          zone: record.zone?.replace('_', ' ').replace('(', '').replace(')', '') || 'Unknown',
-          type: 'unusual_high',
-          severity: consumption > dailyAvg * 3 ? 'critical' : 'warning',
-          description: `Consumption ${((consumption / dailyAvg - 1) * 100).toFixed(0)}% above average`,
-          detectedDay: day,
-          consumption,
-          estimatedLoss: consumption - dailyAvg
-        })
+      // Weekend patterns
+      const isWeekend = [6, 7, 13, 14, 20, 21, 27, 28].includes(day)
+      
+      if (meter.type?.includes('Residential')) {
+        variation = isWeekend ? 1.3 : 1.0 // Higher on weekends for residential
+      } else if (meter.type?.includes('Retail') || meter.type?.includes('Commercial')) {
+        variation = isWeekend ? 0.6 : 1.2 // Lower on weekends for commercial
+      } else if (meter.type?.includes('IRR')) {
+        // Irrigation has different patterns - higher in hot days
+        variation = 0.5 + 1.5 * Math.sin((day - 1) * Math.PI / 15) // Sine wave pattern
       }
       
-      // Detect potential continuous flow for residential meters
-      if (consumption > 50 && record.type?.includes('Residential')) {
-        anomalies.push({
-          account_number: record.account_number,
-          customer_name: record.meter_label,
-          zone: record.zone?.replace('_', ' ').replace('(', '').replace(')', '') || 'Unknown',
-          type: 'continuous_flow',
-          severity: 'warning',
-          description: 'Possible continuous flow detected',
-          detectedDay: day,
-          consumption,
-          estimatedLoss: consumption * 0.3
-        })
-      }
-    })
-    
-    // Limit anomalies for better UX
-    return anomalies.slice(0, 20)
-  }
-
-  const generateHourlyPattern = (data: DailyConsumptionRecord[], day: number) => {
-    // Calculate total July consumption and estimate daily
-    const monthlyTotal = data.reduce((sum, d) => sum + (d.jul_25 || 0), 0)
-    const dayTotal = monthlyTotal / 31
-    
-    const pattern = []
-    const peakHours = [7, 8, 9, 18, 19, 20, 21]
-    
-    for (let hour = 0; hour < 24; hour++) {
-      const isPeak = peakHours.includes(hour)
-      const baseConsumption = dayTotal / 24
-      const hourlyConsumption = isPeak 
-        ? baseConsumption * (1.5 + Math.random() * 0.5)
-        : baseConsumption * (0.5 + Math.random() * 0.5)
+      // Add random daily variation (±20%)
+      variation *= (0.8 + Math.random() * 0.4)
       
-      pattern.push({
-        hour,
-        time: `${hour}:00`,
-        consumption: hourlyConsumption,
-        isPeak
+      const dailyConsumption = Math.max(0, Math.round(dailyAverage * variation))
+      
+      dailyTrend.push({
+        day: day,
+        date: `Jul ${day}`,
+        dayName: new Date(2025, 6, day).toLocaleDateString('en-US', { weekday: 'short' }),
+        consumption: dailyConsumption,
+        isWeekend: isWeekend
       })
     }
-    
-    return pattern
+
+    setIndividualMeterTrend(dailyTrend)
   }
-
-  // Calculate summary statistics
-  const todayTotal = dailyTrend.find(d => d.day === selectedDay)?.consumption || 0
-  const yesterdayTotal = dailyTrend.find(d => d.day === selectedDay - 1)?.consumption || 0
-  const percentChange = yesterdayTotal ? ((todayTotal - yesterdayTotal) / yesterdayTotal * 100) : 0
-  const monthlyTotal = dailyTrend.reduce((sum, d) => sum + d.consumption, 0)
-  const dailyAverage = monthlyTotal / 31
-
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8']
 
   if (loading) {
     return (
@@ -316,34 +338,33 @@ export const EnhancedDailyConsumption: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header with Date Selection */}
+      {/* Header with Controls */}
       <Card>
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-[#4E4456] dark:text-white">Daily Consumption Monitor</h2>
-            <p className="text-gray-500">Real-time tracking for July 2025</p>
+            <h2 className="text-2xl font-bold text-[#4E4456] dark:text-white">Daily Consumption Analysis</h2>
+            <p className="text-gray-500">Zone-based consumption monitoring for July 2025</p>
           </div>
           <div className="flex items-center gap-4">
+            <select
+              value={selectedZone}
+              onChange={(e) => setSelectedZone(e.target.value)}
+              className="px-4 py-2 border rounded-lg dark:bg-white/10 dark:border-gray-600"
+            >
+              {dynamicZoneOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
             <select 
               value={selectedDay}
               onChange={(e) => setSelectedDay(Number(e.target.value))}
-              className="px-4 py-2 border rounded-lg dark:bg-white/10"
+              className="px-4 py-2 border rounded-lg dark:bg-white/10 dark:border-gray-600"
             >
               {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
                 <option key={day} value={day}>July {day}, 2025</option>
               ))}
-            </select>
-            <select
-              value={selectedZone}
-              onChange={(e) => setSelectedZone(e.target.value)}
-              className="px-4 py-2 border rounded-lg dark:bg-white/10"
-            >
-              <option value="all">All Zones</option>
-              <option value="Zone_03_(A)">Zone 03 (A)</option>
-              <option value="Zone_03_(B)">Zone 03 (B)</option>
-              <option value="Zone_05">Zone 05</option>
-              <option value="Zone_08">Zone 08</option>
-              <option value="Zone_01_(FM)">Zone FM</option>
             </select>
             <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center gap-2">
               <Download className="w-4 h-4" />
@@ -353,283 +374,326 @@ export const EnhancedDailyConsumption: React.FC = () => {
         </div>
       </Card>
 
-      {/* Critical Alerts */}
-      {anomalies.filter(a => a.severity === 'critical').length > 0 && (
-        <Card className="border-red-500 bg-red-50 dark:bg-red-900/20">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="w-8 h-8 text-red-500 animate-pulse" />
-            <div className="flex-1">
-              <h3 className="font-semibold text-red-800 dark:text-red-400">
-                Critical Alerts - {anomalies.filter(a => a.severity === 'critical').length} Issues Detected
-              </h3>
-              <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                {anomalies.filter(a => a.severity === 'critical').slice(0, 4).map((anomaly, idx) => (
-                  <div key={idx} className="p-2 bg-white dark:bg-gray-800 rounded flex justify-between">
-                    <div>
-                      <span className="font-medium text-sm">{anomaly.account_number}:</span>
-                      <span className="ml-2 text-xs">{anomaly.description}</span>
-                    </div>
-                    <span className="text-red-600 font-bold text-sm">
-                      {anomaly.estimatedLoss?.toFixed(1)} m³
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
-          title="TODAY'S TOTAL"
-          value={todayTotal.toFixed(0)}
-          unit="m³"
-          subtitle={`${percentChange > 0 ? '+' : ''}${percentChange.toFixed(1)}% vs yesterday`}
-          icon={Droplets}
-          color="blue"
-          variant="default"
-        />
-        <KpiCard
-          title="ACTIVE METERS"
-          value={dailyData.filter(d => (d.jul_25 || 0) > 0).length}
-          unit="meters"
-          subtitle={`of ${dailyData.length} total`}
-          icon={Activity}
-          color="green"
-          variant="default"
-        />
-        <KpiCard
-          title="ANOMALIES"
-          value={anomalies.length}
-          unit="detected"
-          subtitle={`${anomalies.filter(a => a.severity === 'critical').length} critical`}
-          icon={AlertTriangle}
-          color="orange"
-          variant="default"
-        />
-        <KpiCard
-          title="DAILY AVERAGE"
-          value={dailyAverage.toFixed(0)}
-          unit="m³/day"
-          subtitle="Monthly average"
-          icon={Target}
-          color="purple"
-          variant="default"
-        />
-      </div>
-
-      {/* Main Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Trend Chart */}
-        <Card>
-          <h3 className="text-lg font-semibold mb-4">Daily Consumption Trend - July 2025</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={dailyTrend}>
-              <defs>
-                <linearGradient id="colorConsumption" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(200, 200, 200, 0.1)" />
-              <XAxis 
-                dataKey="date" 
-                stroke="#9E9AA7" 
-                fontSize={12}
-                tickFormatter={(value) => value.replace('Jul ', '')}
-              />
-              <YAxis stroke="#9E9AA7" fontSize={12} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area
-                type="monotone"
-                dataKey="consumption"
-                stroke="#3B82F6"
-                strokeWidth={2}
-                fill="url(#colorConsumption)"
-              />
-              <Line
-                type="monotone"
-                dataKey="consumption"
-                stroke="#FF0000"
-                strokeWidth={0}
-                dot={{ r: 2, fill: selectedDay === dailyTrend.indexOf(dailyTrend.find(d => d.day === selectedDay)) ? '#FF0000' : 'transparent' }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </Card>
-
-        {/* Hourly Pattern Chart */}
-        <Card>
-          <h3 className="text-lg font-semibold mb-4">Hourly Consumption Pattern - July {selectedDay}</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={hourlyPattern}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(200, 200, 200, 0.1)" />
-              <XAxis 
-                dataKey="time" 
-                stroke="#9E9AA7" 
-                fontSize={12}
-                tickFormatter={(value) => value.replace(':00', '')}
-              />
-              <YAxis stroke="#9E9AA7" fontSize={12} />
-              <Tooltip />
-              <Bar 
-                dataKey="consumption" 
-                fill="#3B82F6"
-                fillOpacity={0.8}
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
-
-      {/* Zone Performance Grid */}
+      {/* Circular Gauges */}
       <Card>
-        <h3 className="text-lg font-semibold mb-4">Zone Performance Analysis</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          {zoneStats.map(zone => (
-            <div key={zone.zone} className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{zone.zone}</span>
-                <MapPin className="w-4 h-4 text-gray-400" />
-              </div>
-              <p className="text-2xl font-bold">{zone.consumption.toFixed(0)} m³</p>
-              <div className="flex items-center gap-1 mt-2">
-                {zone.trend === 'up' && <TrendingUp className="w-4 h-4 text-red-500" />}
-                {zone.trend === 'down' && <TrendingDown className="w-4 h-4 text-green-500" />}
-                {zone.trend === 'stable' && <Activity className="w-4 h-4 text-gray-500" />}
-                <span className={`text-xs ${
-                  zone.trend === 'up' ? 'text-red-500' : 
-                  zone.trend === 'down' ? 'text-green-500' : 
-                  'text-gray-500'
-                }`}>
-                  {zone.changePercent > 0 ? '+' : ''}{zone.changePercent.toFixed(1)}%
-                </span>
-              </div>
-              <p className="text-xs text-gray-500 mt-1">{zone.meters} meters active</p>
-            </div>
-          ))}
+        <h3 className="text-lg font-semibold mb-6 text-[#4E4456] dark:text-white">
+          Zone {selectedZone.replace('_', ' ').replace('(', '').replace(')', '')} - Daily Metrics (July {selectedDay})
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 justify-items-center">
+          <CircularGauge
+            title="Zone Bulk Consumption"
+            value={Math.round(zoneMetrics.zoneBulkTotal || 0)}
+            maxValue={zoneMetrics.maxValue || 100}
+            color="#3B82F6"
+            unit="m³"
+          />
+          <CircularGauge
+            title="Total Consumption"
+            value={Math.round(zoneMetrics.totalConsumption || 0)}
+            maxValue={zoneMetrics.maxValue || 100}
+            color="#10B981"
+            unit="m³"
+          />
+          <CircularGauge
+            title="Bulk vs Individual Difference"
+            value={Math.round(Math.abs(zoneMetrics.difference || 0))}
+            maxValue={zoneMetrics.maxValue || 100}
+            color={zoneMetrics.difference >= 0 ? "#EF4444" : "#10B981"}
+            unit="m³"
+            showDifference={true}
+            difference={Math.round(zoneMetrics.difference || 0)}
+          />
+        </div>
+        <div className="mt-4 text-center text-sm text-gray-500">
+          Zone has {zoneMetrics.zoneBulkMeters || 0} bulk meters and {zoneMetrics.individualMeters || 0} individual meters
         </div>
       </Card>
 
-      {/* Top Consumers Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <h3 className="text-lg font-semibold mb-4">Top 10 Consumers - July {selectedDay}</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-white/5">
-                <tr>
-                  <th className="px-4 py-2 text-left">Rank</th>
-                  <th className="px-4 py-2 text-left">Account</th>
-                  <th className="px-4 py-2 text-left">Zone</th>
-                  <th className="px-4 py-2 text-right">Consumption</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topConsumers.slice(0, 10).map((consumer, idx) => (
-                  <tr key={idx} className="border-b dark:border-white/10">
-                    <td className="px-4 py-2 font-bold text-gray-500">#{idx + 1}</td>
-                    <td className="px-4 py-2 font-medium truncate max-w-[150px]">{consumer.name}</td>
-                    <td className="px-4 py-2 text-xs text-gray-500">{consumer.zone}</td>
-                    <td className="px-4 py-2 text-right font-bold">{consumer.consumption.toFixed(1)} m³</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        {/* Zone Distribution Pie Chart */}
-        <Card>
-          <h3 className="text-lg font-semibold mb-4">Consumption by Zone</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={zoneStats}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ zone, consumption }) => `${zone}: ${consumption.toFixed(0)} m³`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="consumption"
-              >
-                {zoneStats.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </Card>
-      </div>
-
-      {/* Anomaly Detection Summary */}
+      {/* Daily Consumption Trends Chart */}
       <Card>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-semibold">Anomaly Detection Summary</h3>
-          <span className="text-sm text-gray-500">
-            Based on consumption patterns for July {selectedDay}
-          </span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-red-800 dark:text-red-400">Critical Issues</p>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Immediate attention required</p>
-              </div>
-              <span className="text-3xl font-bold text-red-600">
-                {anomalies.filter(a => a.severity === 'critical').length}
-              </span>
-            </div>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white">
+              Daily Consumption Trends - July 2025
+            </h3>
+            <p className="text-sm text-gray-500">
+              {selectedZone.replace('_', ' ').replace('(', '').replace(')', '')} - Individual day analysis
+            </p>
           </div>
-          
-          <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-yellow-800 dark:text-yellow-400">Warnings</p>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Monitor closely</p>
-              </div>
-              <span className="text-3xl font-bold text-yellow-600">
-                {anomalies.filter(a => a.severity === 'warning').length}
-              </span>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+              <span>Bulk</span>
             </div>
-          </div>
-          
-          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-blue-800 dark:text-blue-400">Total Loss Estimate</p>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Potential wastage</p>
-              </div>
-              <span className="text-3xl font-bold text-blue-600">
-                {anomalies.reduce((sum, a) => sum + (a.estimatedLoss || 0), 0).toFixed(0)} m³
-              </span>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              <span>Total</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+              <span>Loss</span>
             </div>
           </div>
         </div>
+        
+        <ResponsiveContainer width="100%" height={400}>
+          <LineChart data={monthlyTrends} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(200, 200, 200, 0.1)" />
+            <XAxis 
+              dataKey="date" 
+              stroke="#9E9AA7" 
+              fontSize={11}
+              interval={2} // Show every 3rd day to avoid crowding
+              angle={-45}
+              textAnchor="end"
+              height={60}
+            />
+            <YAxis 
+              stroke="#9E9AA7" 
+              fontSize={12}
+              tickFormatter={(value) => `${(value / 1000).toFixed(1)}k`}
+            />
+            <Tooltip 
+              contentStyle={{
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                border: '1px solid #e5e7eb',
+                borderRadius: '8px',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+              }}
+              labelFormatter={(label, payload) => {
+                const data = payload?.[0]?.payload
+                return data ? `${label} (${data.dayName})` : label
+              }}
+              formatter={(value: number, name: string) => [
+                `${value.toLocaleString()} m³`,
+                name
+              ]}
+            />
+            <Legend />
+            <Line
+              type="monotone"
+              dataKey="bulkConsumption"
+              stroke="#3B82F6"
+              strokeWidth={2.5}
+              name="Bulk Consumption"
+              dot={{ r: 3, fill: '#3B82F6', strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: '#3B82F6', strokeWidth: 2, stroke: '#ffffff' }}
+            />
+            <Line
+              type="monotone"
+              dataKey="totalConsumption"
+              stroke="#10B981"
+              strokeWidth={2.5}
+              name="Total Consumption"
+              dot={{ r: 3, fill: '#10B981', strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: '#10B981', strokeWidth: 2, stroke: '#ffffff' }}
+            />
+            <Line
+              type="monotone"
+              dataKey="loss"
+              stroke="#EF4444"
+              strokeWidth={2.5}
+              name="Water Loss"
+              dot={{ r: 3, fill: '#EF4444', strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: '#EF4444', strokeWidth: 2, stroke: '#ffffff' }}
+              strokeDasharray="5 5" // Dashed line for losses
+            />
+          </LineChart>
+        </ResponsiveContainer>
+        
+        {/* Daily Statistics Summary */}
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="text-center">
+            <p className="text-sm text-gray-500">Peak Day</p>
+            <p className="font-semibold text-blue-600">
+              {monthlyTrends.length > 0 ? 
+                monthlyTrends.reduce((max, day) => day.totalConsumption > max.totalConsumption ? day : max, monthlyTrends[0]).date 
+                : 'N/A'
+              }
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm text-gray-500">Lowest Day</p>
+            <p className="font-semibold text-green-600">
+              {monthlyTrends.length > 0 ? 
+                monthlyTrends.reduce((min, day) => day.totalConsumption < min.totalConsumption ? day : min, monthlyTrends[0]).date 
+                : 'N/A'
+              }
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm text-gray-500">Daily Average</p>
+            <p className="font-semibold text-gray-700 dark:text-gray-300">
+              {monthlyTrends.length > 0 ? 
+                Math.round(monthlyTrends.reduce((sum, day) => sum + day.totalConsumption, 0) / monthlyTrends.length).toLocaleString() 
+                : '0'
+              } m³
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm text-gray-500">Total Loss</p>
+            <p className="font-semibold text-red-600">
+              {monthlyTrends.length > 0 ? 
+                monthlyTrends.reduce((sum, day) => sum + day.loss, 0).toLocaleString() 
+                : '0'
+              } m³
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Individual Meter Analysis */}
+      <Card>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-[#4E4456] dark:text-white">Individual Meter Daily Analysis</h3>
+            <p className="text-sm text-gray-500">Select a meter to view its daily consumption pattern for July 2025</p>
+          </div>
+          <select
+            value={selectedMeter}
+            onChange={(e) => setSelectedMeter(e.target.value)}
+            className="px-4 py-2 border rounded-lg dark:bg-white/10 dark:border-gray-600 min-w-[250px]"
+          >
+            <option value="">Select a meter...</option>
+            {zoneMeters.map(meter => (
+              <option key={meter.account_number} value={meter.account_number}>
+                {meter.meter_label} ({meter.account_number}) - {meter.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedMeter && individualMeterTrend.length > 0 ? (
+          <div>
+            <div className="mb-3 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+              <p className="text-sm text-purple-800 dark:text-purple-400">
+                Daily consumption pattern for <strong>{waterMeters.find(m => m.account_number === selectedMeter)?.meter_label}</strong> in July 2025
+              </p>
+            </div>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={individualMeterTrend} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(200, 200, 200, 0.1)" />
+                <XAxis 
+                  dataKey="date" 
+                  stroke="#9E9AA7" 
+                  fontSize={11}
+                  interval={2} // Show every 3rd day
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis 
+                  stroke="#9E9AA7" 
+                  fontSize={12}
+                  tickFormatter={(value) => value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value.toString()}
+                />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                  labelFormatter={(label, payload) => {
+                    const data = payload?.[0]?.payload
+                    return data ? `${label} (${data.dayName})` : label
+                  }}
+                  formatter={(value: number) => [`${value.toLocaleString()} m³`, 'Daily Consumption']}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="consumption"
+                  stroke="#8B5CF6"
+                  strokeWidth={2.5}
+                  name="Daily Consumption"
+                  dot={{ r: 3, fill: '#8B5CF6', strokeWidth: 0 }}
+                  activeDot={{ r: 5, fill: '#8B5CF6', strokeWidth: 2, stroke: '#ffffff' }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+            
+            {/* Individual Meter Daily Statistics */}
+            <div className="mt-3 grid grid-cols-3 gap-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Peak Day</p>
+                <p className="font-semibold text-purple-600 text-sm">
+                  {individualMeterTrend.reduce((max, day) => day.consumption > max.consumption ? day : max, individualMeterTrend[0]).date}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Daily Average</p>
+                <p className="font-semibold text-gray-700 dark:text-gray-300 text-sm">
+                  {Math.round(individualMeterTrend.reduce((sum, day) => sum + day.consumption, 0) / individualMeterTrend.length).toLocaleString()} m³
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-gray-500">Total July</p>
+                <p className="font-semibold text-blue-600 text-sm">
+                  {individualMeterTrend.reduce((sum, day) => sum + day.consumption, 0).toLocaleString()} m³
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-64 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <p className="text-gray-500">Select a meter to view its consumption pattern</p>
+          </div>
+        )}
+      </Card>
+
+      {/* Zone Meters Summary Table */}
+      <Card>
+        <h3 className="text-lg font-semibold mb-4 text-[#4E4456] dark:text-white">
+          Zone Meters Summary - {selectedZone.replace('_', ' ').replace('(', '').replace(')', '')}
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-white/5">
+              <tr>
+                <th className="px-4 py-3 text-left">Meter Label</th>
+                <th className="px-4 py-3 text-left">Account</th>
+                <th className="px-4 py-3 text-left">Level</th>
+                <th className="px-4 py-3 text-left">Type</th>
+                <th className="px-4 py-3 text-right">July 2025 (m³)</th>
+                <th className="px-4 py-3 text-right">Daily Avg (m³)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {zoneMeters.slice(0, 20).map((meter) => (
+                <tr 
+                  key={meter.account_number} 
+                  className={`border-b dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 cursor-pointer ${
+                    selectedMeter === meter.account_number ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                  }`}
+                  onClick={() => setSelectedMeter(meter.account_number)}
+                >
+                  <td className="px-4 py-3 font-medium">{meter.meter_label}</td>
+                  <td className="px-4 py-3">{meter.account_number}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      meter.label === 'L1' ? 'bg-purple-100 text-purple-800' :
+                      meter.label === 'L2' ? 'bg-blue-100 text-blue-800' :
+                      meter.label === 'L3' ? 'bg-green-100 text-green-800' :
+                      meter.label === 'L4' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {meter.label}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-xs">{meter.type || 'Unknown'}</td>
+                  <td className="px-4 py-3 text-right font-semibold">{(meter.jul_25 || 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-blue-600 font-medium">{((meter.jul_25 || 0) / 31).toFixed(1)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {zoneMeters.length > 20 && (
+          <div className="mt-4 text-center text-sm text-gray-500">
+            Showing first 20 of {zoneMeters.length} meters in this zone
+          </div>
+        )}
       </Card>
     </div>
   )
-}
-
-// Custom Tooltip Component
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
-        <p className="font-semibold">{label}</p>
-        {payload.map((pld: any, index: number) => (
-          <p key={index} style={{ color: pld.color }}>
-            {`${pld.name}: ${pld.value.toLocaleString()} m³`}
-          </p>
-        ))}
-      </div>
-    )
-  }
-  return null
 }

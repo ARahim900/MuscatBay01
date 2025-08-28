@@ -1,6 +1,91 @@
 export interface Database {
   public: {
     Tables: {
+      water_meters: {
+        Row: {
+          id: number;
+          meter_label: string;
+          account_number: string;
+          label: 'L1' | 'L2' | 'L3' | 'L4' | 'DC' | 'N/A';
+          zone: string;
+          parent_meter: string;
+          type: string;
+          jan_25?: number;
+          feb_25?: number;
+          mar_25?: number;
+          apr_25?: number;
+          may_25?: number;
+          jun_25?: number;
+          jul_25?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Insert: {
+          meter_label: string;
+          account_number: string;
+          label: 'L1' | 'L2' | 'L3' | 'L4' | 'DC' | 'N/A';
+          zone: string;
+          parent_meter: string;
+          type: string;
+          jan_25?: number;
+          feb_25?: number;
+          mar_25?: number;
+          apr_25?: number;
+          may_25?: number;
+          jun_25?: number;
+          jul_25?: number;
+        };
+        Update: {
+          meter_label?: string;
+          account_number?: string;
+          label?: 'L1' | 'L2' | 'L3' | 'L4' | 'DC' | 'N/A';
+          zone?: string;
+          parent_meter?: string;
+          type?: string;
+          jan_25?: number;
+          feb_25?: number;
+          mar_25?: number;
+          apr_25?: number;
+          may_25?: number;
+          jun_25?: number;
+          jul_25?: number;
+        };
+      };
+      july25_daily_water_consumption_data: {
+        Row: {
+          id: number;
+          date: string;
+          meter_id: string;
+          meter_label: string;
+          account_number: string;
+          zone: string;
+          level: string;
+          meter_type: string;
+          consumption: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Insert: {
+          date: string;
+          meter_id: string;
+          meter_label: string;
+          account_number: string;
+          zone: string;
+          level: string;
+          meter_type: string;
+          consumption: number;
+        };
+        Update: {
+          date?: string;
+          meter_id?: string;
+          meter_label?: string;
+          account_number?: string;
+          zone?: string;
+          level?: string;
+          meter_type?: string;
+          consumption?: number;
+        };
+      };
       equipment_types: {
         Row: {
           id: number;
